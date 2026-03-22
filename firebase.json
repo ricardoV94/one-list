@@ -1,4 +1,7 @@
 {
+  "firestore": {
+    "rules": "firestore.rules"
+  },
   "hosting": {
     "predeploy": ["bash stamp-deploy.sh"],
     "public": ".",
