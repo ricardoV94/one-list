@@ -16,6 +16,7 @@
       padding: 16px;
       background: #f5f5f5;
       color: #222;
+      overflow-x: hidden;
     }
 
     header {
@@ -155,6 +156,7 @@
       display: flex;
       gap: 8px;
       align-items: center;
+      flex-wrap: wrap;
     }
 
     .entry-actions button {
@@ -191,13 +193,13 @@
     }
 
     .history-nav button {
-      padding: 2px 8px;
+      padding: 6px 12px;
       font-size: 0.85rem;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
       background: #fff;
       cursor: pointer;
-      min-height: 28px;
+      min-height: 36px;
     }
 
     .history-nav button:disabled { opacity: 0.3; cursor: default; }
@@ -266,7 +268,7 @@
 
   <div id="app">
     <header>
-      <h1>One List <span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-22 14:26</span></h1>
+      <h1>One List <span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-22 14:51</span></h1>
       <div class="header-icons">
         <button id="toggle-search" title="Search">&#128269;</button>
         <button id="toggle-new" title="New entry">New</button>
@@ -425,7 +427,7 @@
         const dateEl = document.createElement('div');
         dateEl.className = 'entry-date';
         const ts = entry.sortTime?.toDate?.() || entry.createdAt?.toDate?.() || new Date();
-        const fmtOpts = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+        const fmtOpts = { year: 'numeric', month: 'short', day: 'numeric' };
         dateEl.textContent = ts.toLocaleDateString('en-US', fmtOpts);
 
         // History state
@@ -438,21 +440,22 @@
           : [{ content: entry.content, date: null }];
         let versionIdx = versions.length - 1;
 
+        const closeHistory = () => {
+          historyOpen = false;
+          histNav.style.display = 'none';
+          actions.style.display = 'flex';
+          versionIdx = versions.length - 1;
+          card.classList.remove('history-viewing');
+          contentEl.innerHTML = marked.parse(entry.content);
+          dateEl.childNodes[0].textContent = ts.toLocaleDateString('en-US', fmtOpts);
+        };
+
         // Version icon (clock icon like Google Docs) - shown next to date if entry has history
         if (hasHistory) {
           const versionIcon = document.createElement('span');
           versionIcon.className = 'version-icon';
           versionIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>';
           versionIcon.title = `${versions.length} versions`;
-          const closeHistory = () => {
-            historyOpen = false;
-            histNav.style.display = 'none';
-            actions.style.display = 'flex';
-            versionIdx = versions.length - 1;
-            card.classList.remove('history-viewing');
-            contentEl.innerHTML = marked.parse(entry.content);
-            dateEl.childNodes[0].textContent = ts.toLocaleDateString('en-US', fmtOpts);
-          };
           versionIcon.addEventListener('click', () => {
             if (historyOpen) { closeHistory(); return; }
             historyOpen = true;
@@ -494,7 +497,7 @@
           prevBtn.disabled = versionIdx === 0;
           nextBtn.disabled = isCurrent;
           const counter = `${versionIdx + 1}/${versions.length}`;
-          label.textContent = isCurrent ? `${counter} (current)` : counter;
+          label.textContent = counter;
           dateEl.childNodes[0].textContent = isCurrent
             ? ts.toLocaleDateString('en-US', fmtOpts)
             : fmtDate(versions[versionIdx].date);
@@ -507,34 +510,22 @@
 
         // Build version-specific action buttons inside history nav
         const histActions = document.createElement('span');
-        histActions.style.cssText = 'display:flex;gap:6px;margin-left:auto;';
+        histActions.style.cssText = 'display:flex;gap:8px;';
+
+        const histRight = document.createElement('span');
+        histRight.style.cssText = 'display:flex;gap:8px;align-items:center;margin-left:auto;';
 
         function buildHistoryActions() {
           histActions.innerHTML = '';
           const isCurrent = versionIdx === versions.length - 1;
 
-          // Edit button (for any version)
-          const editVerBtn = document.createElement('button');
-          editVerBtn.className = 'btn-edit';
-          editVerBtn.textContent = 'Edit';
-          editVerBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;';
-          editVerBtn.addEventListener('click', () => {
-            historyOpen = false;
-            histNav.style.display = 'none';
-            actions.style.display = 'flex';
-            card.classList.remove('history-viewing');
-            activeEdits.set(entry.id, { value: versions[versionIdx].content, card });
-            buildEditMode(versions[versionIdx].content, !isCurrent);
-          }, { once: true });
-          // Bump button (only for non-current versions) - leftmost
+          // Bump button (only for non-current versions)
           if (!isCurrent) {
             const rescueVerBtn = document.createElement('button');
             rescueVerBtn.className = 'btn-rescue';
             rescueVerBtn.textContent = 'Bump';
-            rescueVerBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;';
             rescueVerBtn.addEventListener('click', async () => {
               const rescuedContent = versions[versionIdx].content;
-              // Replace the rescued version in history with the current content
               const newHistory = history.map((h, i) => i === versionIdx
                 ? { content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() }
                 : h
@@ -548,57 +539,69 @@
             histActions.appendChild(rescueVerBtn);
           }
 
+          // Edit button (for any version)
+          const editVerBtn = document.createElement('button');
+          editVerBtn.className = 'btn-edit';
+          editVerBtn.textContent = 'Edit';
+          editVerBtn.addEventListener('click', () => {
+            histNav.style.display = 'none';
+            activeEdits.set(entry.id, { value: versions[versionIdx].content, card });
+            buildEditMode(versions[versionIdx].content, !isCurrent, true);
+          }, { once: true });
           histActions.appendChild(editVerBtn);
 
-          // Delete version button (only for non-current versions, and only if there's >1 history entry)
+          // Delete version button (only for non-current versions)
           if (!isCurrent) {
             const delVerBtn = document.createElement('button');
             delVerBtn.className = 'btn-delete';
             delVerBtn.textContent = 'Delete';
-            delVerBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;';
             delVerBtn.addEventListener('click', () => {
               delVerBtn.textContent = 'Confirm?';
               delVerBtn.className = 'btn-confirm-delete';
-              delVerBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;';
               delVerBtn.addEventListener('click', async () => {
-                // Remove this specific version from editHistory
                 const newHistory = history.filter((_, i) => i !== versionIdx);
                 await updateDoc(doc(db, 'entries', entry.id), { editHistory: newHistory });
               }, { once: true });
               setTimeout(() => {
                 delVerBtn.textContent = 'Delete';
                 delVerBtn.className = 'btn-delete';
-                delVerBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;';
               }, 3000);
             }, { once: true });
             histActions.appendChild(delVerBtn);
           }
 
-          // Delete all history button
-          const clearHistBtn = document.createElement('button');
-          clearHistBtn.className = 'btn-clear-history';
-          clearHistBtn.textContent = 'Delete history';
-          clearHistBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;border:1px solid;border-radius:4px;cursor:pointer;';
-          clearHistBtn.addEventListener('click', () => {
-            clearHistBtn.textContent = 'Confirm?';
-            clearHistBtn.className = 'btn-confirm-delete';
-            clearHistBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;border:1px solid;border-radius:4px;background:#d93025;color:#fff;border-color:#d93025;cursor:pointer;';
-            clearHistBtn.addEventListener('click', async () => {
-              await updateDoc(doc(db, 'entries', entry.id), { editHistory: [] });
-            }, { once: true });
-            setTimeout(() => {
-              clearHistBtn.textContent = 'Delete history';
-              clearHistBtn.className = 'btn-clear-history';
-              clearHistBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;border:1px solid;border-radius:4px;cursor:pointer;';
-            }, 3000);
-          }, { once: true });
-          histActions.appendChild(clearHistBtn);
         }
 
-        histNav.appendChild(prevBtn);
-        histNav.appendChild(label);
-        histNav.appendChild(nextBtn);
+        // Layout: [Bump Edit Delete] ... [Delete history ← 3/4 → ✕]
         histNav.appendChild(histActions);
+
+        const clearHistBtn = document.createElement('button');
+        clearHistBtn.className = 'btn-clear-history';
+        clearHistBtn.textContent = 'Delete history';
+        clearHistBtn.addEventListener('click', () => {
+          clearHistBtn.textContent = 'Confirm?';
+          clearHistBtn.className = 'btn-confirm-delete';
+          clearHistBtn.addEventListener('click', async () => {
+            await updateDoc(doc(db, 'entries', entry.id), { editHistory: [] });
+          }, { once: true });
+          setTimeout(() => {
+            clearHistBtn.textContent = 'Delete history';
+            clearHistBtn.className = 'btn-clear-history';
+          }, 3000);
+        }, { once: true });
+        histRight.appendChild(clearHistBtn);
+
+        histRight.appendChild(prevBtn);
+        histRight.appendChild(label);
+        histRight.appendChild(nextBtn);
+        if (hasHistory) {
+          const closeHistBtn = document.createElement('button');
+          closeHistBtn.textContent = '✕';
+          closeHistBtn.title = 'Close history';
+          closeHistBtn.addEventListener('click', closeHistory);
+          histRight.appendChild(closeHistBtn);
+        }
+        histNav.appendChild(histRight);
 
         function buildViewMode() {
           actions.style.display = 'flex';
@@ -641,7 +644,7 @@
           dateEl.childNodes[0].textContent = ts.toLocaleDateString('en-US', fmtOpts);
         }
 
-        function buildEditMode(initialValue, makeCurrentOnSave) {
+        function buildEditMode(initialValue, makeCurrentOnSave, returnToHistory) {
           // Swap content for textarea
           const textarea = document.createElement('textarea');
           textarea.className = 'edit-textarea';
@@ -658,6 +661,7 @@
           textarea.focus();
 
           // Replace action buttons with Save + Cancel
+          actions.style.display = 'flex';
           actions.innerHTML = '';
           const saveBtn = document.createElement('button');
           saveBtn.className = 'btn-edit';
@@ -672,7 +676,13 @@
             activeEdits.delete(entry.id);
             contentEl.innerHTML = marked.parse(entry.content);
             textarea.replaceWith(contentEl);
-            buildViewMode();
+            if (returnToHistory) {
+              actions.style.display = 'none';
+              histNav.style.display = 'flex';
+              updateHistoryView();
+            } else {
+              buildViewMode();
+            }
           };
 
           const saveEdit = async () => {
@@ -797,6 +807,16 @@
     searchInput.addEventListener('input', (e) => {
       currentFilter = e.target.value;
       renderEntries();
+    });
+
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        searchInput.value = '';
+        currentFilter = '';
+        searchArea.classList.remove('open');
+        toggleSearchBtn.classList.remove('active');
+        renderEntries();
+      }
     });
 
     // ── Service worker ──
