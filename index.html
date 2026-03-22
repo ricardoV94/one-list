@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1a73e8">
+  <link rel="manifest" href="/manifest.json">
+  <title>One List</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 16px;
+      background: #f5f5f5;
+      color: #222;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    header h1 { font-size: 1.4rem; }
+
+    #auth-btn {
+      padding: 8px 16px;
+      font-size: 0.9rem;
+      background: #1a73e8;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    #auth-section {
+      text-align: center;
+      margin-top: 40vh;
+    }
+
+    #auth-section button {
+      padding: 12px 24px;
+      font-size: 1rem;
+      background: #1a73e8;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    #app { display: none; }
+
+    #input-area { margin-bottom: 16px; }
+
+    #new-entry {
+      width: 100%;
+      min-height: 80px;
+      padding: 12px;
+      font-size: 1rem;
+      font-family: inherit;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      resize: vertical;
+      margin-bottom: 8px;
+    }
+
+    #append-btn {
+      width: 100%;
+      padding: 12px;
+      font-size: 1rem;
+      background: #1a73e8;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      min-height: 44px;
+    }
+
+    #search-area {
+      position: sticky;
+      top: 0;
+      background: #f5f5f5;
+      padding: 8px 0;
+      z-index: 10;
+      margin-bottom: 8px;
+    }
+
+    #search-input {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+
+    .entry-card {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .entry-date {
+      font-size: 0.8rem;
+      color: #888;
+      margin-bottom: 6px;
+    }
+
+    .entry-content {
+      word-break: break-word;
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+
+    .entry-content p { margin: 0 0 8px 0; }
+    .entry-content p:last-child { margin-bottom: 0; }
+    .entry-content ul, .entry-content ol { margin: 0 0 8px 0; padding-left: 24px; }
+    .entry-content code { background: #eee; padding: 1px 4px; border-radius: 3px; font-size: 0.9em; }
+    .entry-content pre { background: #eee; padding: 8px; border-radius: 6px; overflow-x: auto; margin: 0 0 8px 0; }
+    .entry-content pre code { background: none; padding: 0; }
+    .entry-content blockquote { border-left: 3px solid #ccc; margin: 0 0 8px 0; padding-left: 12px; color: #666; }
+    .entry-content h1, .entry-content h2, .entry-content h3 { margin: 0 0 6px 0; }
+    .entry-content a { color: #1a73e8; }
+
+    .entry-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .entry-actions button {
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      min-height: 36px;
+    }
+
+    .entry-actions button:active { background: #eee; }
+
+    .history-nav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: #888;
+      margin-bottom: 6px;
+    }
+
+    .history-nav button {
+      padding: 2px 8px;
+      font-size: 0.85rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #fff;
+      cursor: pointer;
+      min-height: 28px;
+    }
+
+    .history-nav button:disabled { opacity: 0.3; cursor: default; }
+
+    .history-viewing .entry-content { opacity: 0.7; font-style: italic; }
+
+    .btn-edit { color: #188038; border-color: #188038; }
+    .btn-rescue { color: #1a73e8; border-color: #1a73e8; }
+    .btn-delete { color: #d93025; border-color: #d93025; }
+    .btn-confirm-delete { background: #d93025 !important; color: #fff !important; border-color: #d93025; }
+
+    .edit-textarea {
+      width: 100%;
+      min-height: 80px;
+      padding: 8px;
+      font-size: 1rem;
+      font-family: inherit;
+      border: 1px solid #188038;
+      border-radius: 6px;
+      resize: vertical;
+      margin-bottom: 8px;
+    }
+
+    #status {
+      text-align: center;
+      font-size: 0.8rem;
+      color: #888;
+      padding: 8px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body { background: #1a1a1a; color: #e0e0e0; }
+      #new-entry { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
+      #search-input { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
+      #search-area { background: #1a1a1a; }
+      .entry-card { background: #2a2a2a; border-color: #444; }
+      .entry-actions button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
+      .entry-actions button:active { background: #333; }
+      .entry-content code { background: #383838; }
+      .entry-content pre { background: #383838; }
+      .entry-content blockquote { border-color: #555; color: #aaa; }
+      .entry-content a { color: #8ab4f8; }
+      .history-nav button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
+      .btn-edit { color: #81c995; border-color: #81c995; }
+      .btn-rescue { color: #8ab4f8; border-color: #8ab4f8; }
+      .btn-delete { color: #f28b82; border-color: #f28b82; }
+      .edit-textarea { background: #2a2a2a; color: #e0e0e0; border-color: #188038; }
+      .btn-confirm-delete { background: #d93025 !important; color: #fff !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="auth-section">
+    <h1>One List</h1>
+    <p style="margin: 16px 0; color: #666;">Append & Review</p>
+    <button id="sign-in-btn">Sign in with Google</button>
+  </div>
+
+  <div id="app">
+    <header>
+      <h1>One List</h1>
+    </header>
+
+    <div id="input-area">
+      <textarea id="new-entry" placeholder="What's on your mind?"></textarea>
+      <button id="append-btn">Append</button>
+    </div>
+
+    <div id="search-area">
+      <input type="search" id="search-input" placeholder="Search entries...">
+    </div>
+
+    <div id="entries-list"></div>
+    <div id="status"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script type="module">
+    marked.setOptions({ breaks: true });
+    // ── Firebase SDK imports ──
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js';
+    import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, GoogleAuthProvider, onAuthStateChanged }
+      from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js';
+    import { initializeFirestore, persistentLocalCache, persistentSingleTabManager,
+             collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot,
+             query, orderBy, serverTimestamp, arrayUnion }
+      from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js';
+
+    // ── Firebase config ──
+    const firebaseConfig = {
+      apiKey: "AIzaSyAYejZ0JRpolX9NBAYtYYG4Q4krA7z5QKw",
+      authDomain: "one-list-ce90d.firebaseapp.com",
+      projectId: "one-list-ce90d",
+      storageBucket: "one-list-ce90d.firebasestorage.app",
+      messagingSenderId: "1046982287763",
+      appId: "1:1046982287763:web:fdd863e848a72d23d10866"
+    };
+
+    // ── Init ──
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() })
+    });
+
+    const entriesRef = collection(db, 'entries');
+    const entriesQuery = query(entriesRef, orderBy('sortTime', 'desc'));
+
+    // ── State ──
+    let allEntries = [];
+    let currentFilter = '';
+    let unsubscribe = null;
+
+    // ── DOM refs ──
+    const authSection = document.getElementById('auth-section');
+    const appSection = document.getElementById('app');
+    const signInBtn = document.getElementById('sign-in-btn');
+    const authBtn = document.getElementById('auth-btn');
+    const newEntry = document.getElementById('new-entry');
+    const appendBtn = document.getElementById('append-btn');
+    const searchInput = document.getElementById('search-input');
+    const entriesList = document.getElementById('entries-list');
+    const statusEl = document.getElementById('status');
+
+    // ── Auth ──
+    const provider = new GoogleAuthProvider();
+
+    signInBtn.addEventListener('click', () => {
+      // Try popup first, fall back to redirect
+      signInWithPopup(auth, provider).catch(() => signInWithRedirect(auth, provider));
+    });
+    getRedirectResult(auth).catch(() => {});
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        authSection.style.display = 'none';
+        appSection.style.display = 'block';
+        startListening();
+      } else {
+        authSection.style.display = 'block';
+        appSection.style.display = 'none';
+        if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+      }
+    });
+
+    // ── Real-time listener ──
+    function startListening() {
+      if (unsubscribe) return;
+      unsubscribe = onSnapshot(entriesQuery, { includeMetadataChanges: true }, (snapshot) => {
+        allEntries = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderEntries();
+        const hasPending = snapshot.metadata.hasPendingWrites;
+        statusEl.textContent = hasPending ? 'Saving...' : '';
+      });
+    }
+
+    // ── Render ──
+    function renderEntries() {
+      entriesList.innerHTML = '';
+      const filter = currentFilter.toLowerCase();
+
+      for (const entry of allEntries) {
+        if (filter && !entry.content.toLowerCase().includes(filter)) continue;
+
+        const card = document.createElement('div');
+        card.className = 'entry-card';
+
+        const dateEl = document.createElement('div');
+        dateEl.className = 'entry-date';
+        const ts = entry.sortTime?.toDate?.() || entry.createdAt?.toDate?.() || new Date();
+        dateEl.textContent = ts.toLocaleDateString('en-US', {
+          year: 'numeric', month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit'
+        });
+
+        const contentEl = document.createElement('div');
+        contentEl.className = 'entry-content';
+        contentEl.innerHTML = marked.parse(entry.content);
+
+        // History navigation
+        const history = entry.editHistory || [];
+        if (history.length > 0) {
+          const fmtDate = (iso) => new Date(iso).toLocaleDateString('en-US', {
+            year: 'numeric', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+          });
+          // versions: [oldest edit, ..., newest edit, current]
+          const versions = [
+            ...history.map(h => ({ content: h.content, date: h.editedAt })),
+            { content: entry.content, date: null }
+          ];
+          let versionIdx = versions.length - 1; // start at current
+
+          const histNav = document.createElement('div');
+          histNav.className = 'history-nav';
+          const prevBtn = document.createElement('button');
+          prevBtn.textContent = '\u2190';
+          const nextBtn = document.createElement('button');
+          nextBtn.textContent = '\u2192';
+          const label = document.createElement('span');
+
+          const updateHistoryView = () => {
+            const isCurrent = versionIdx === versions.length - 1;
+            contentEl.innerHTML = marked.parse(versions[versionIdx].content);
+            prevBtn.disabled = versionIdx === 0;
+            nextBtn.disabled = isCurrent;
+            const counter = `${versionIdx + 1}/${versions.length}`;
+            if (isCurrent) {
+              label.textContent = `${counter} (current)`;
+              dateEl.textContent = ts.toLocaleDateString('en-US', {
+                year: 'numeric', month: 'short', day: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+              });
+            } else {
+              label.textContent = counter;
+              dateEl.textContent = fmtDate(versions[versionIdx].date);
+            }
+            card.classList.toggle('history-viewing', !isCurrent);
+          };
+
+          prevBtn.addEventListener('click', () => { if (versionIdx > 0) { versionIdx--; updateHistoryView(); } });
+          nextBtn.addEventListener('click', () => { if (versionIdx < versions.length - 1) { versionIdx++; updateHistoryView(); } });
+
+          updateHistoryView();
+          histNav.appendChild(prevBtn);
+          histNav.appendChild(label);
+          histNav.appendChild(nextBtn);
+          card.appendChild(histNav);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'entry-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn-edit';
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', () => {
+          const textarea = document.createElement('textarea');
+          textarea.className = 'edit-textarea';
+          textarea.value = entry.content;
+          contentEl.replaceWith(textarea);
+          textarea.focus();
+
+          // Replace all action buttons with Save + Cancel
+          actions.innerHTML = '';
+          const saveBtn = document.createElement('button');
+          saveBtn.className = 'btn-edit';
+          saveBtn.textContent = 'Save';
+          const cancelBtn = document.createElement('button');
+          cancelBtn.className = 'btn-delete';
+          cancelBtn.textContent = 'Cancel';
+
+          const saveEdit = async () => {
+            const newContent = textarea.value.trim();
+            if (newContent && newContent !== entry.content) {
+              await updateDoc(doc(db, 'entries', entry.id), {
+                content: newContent,
+                sortTime: serverTimestamp(),
+                editHistory: arrayUnion({ content: entry.content, editedAt: new Date().toISOString() })
+              });
+            } else {
+              renderEntries();
+            }
+          };
+
+          saveBtn.addEventListener('click', saveEdit);
+          cancelBtn.addEventListener('click', () => renderEntries());
+
+          let editEscPending = false;
+          textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              if (textarea.value.trim() === entry.content) {
+                renderEntries(); // no changes, cancel immediately
+              } else if (editEscPending) {
+                renderEntries();
+              } else {
+                editEscPending = true;
+                statusEl.textContent = 'Press Escape again to discard changes';
+                setTimeout(() => { editEscPending = false; statusEl.textContent = ''; }, 3000);
+              }
+            }
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveEdit(); }
+          });
+
+          actions.appendChild(saveBtn);
+          actions.appendChild(cancelBtn);
+        }, { once: true });
+
+        const rescueBtn = document.createElement('button');
+        rescueBtn.className = 'btn-rescue';
+        rescueBtn.textContent = 'Rescue';
+        rescueBtn.addEventListener('click', () => rescueEntry(entry.id));
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn-delete';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.addEventListener('click', () => {
+          deleteBtn.textContent = 'Confirm delete?';
+          deleteBtn.className = 'btn-confirm-delete';
+          deleteBtn.addEventListener('click', () => removeEntry(entry.id), { once: true });
+          setTimeout(() => {
+            deleteBtn.textContent = 'Delete';
+            deleteBtn.className = 'btn-delete';
+          }, 3000);
+        }, { once: true });
+
+        actions.appendChild(editBtn);
+        actions.appendChild(rescueBtn);
+        actions.appendChild(deleteBtn);
+        card.appendChild(dateEl);
+        card.appendChild(contentEl);
+        card.appendChild(actions);
+        entriesList.appendChild(card);
+      }
+    }
+
+    // ── Actions ──
+    async function appendEntry() {
+      const content = newEntry.value.trim();
+      if (!content) return;
+      newEntry.value = '';
+      await addDoc(entriesRef, {
+        content,
+        createdAt: serverTimestamp(),
+        sortTime: serverTimestamp()
+      });
+    }
+
+    async function rescueEntry(id) {
+      await updateDoc(doc(db, 'entries', id), { sortTime: serverTimestamp() });
+    }
+
+    async function removeEntry(id) {
+      await deleteDoc(doc(db, 'entries', id));
+    }
+
+    // ── Event listeners ──
+    appendBtn.addEventListener('click', appendEntry);
+
+    let appendEscPending = false;
+    newEntry.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        appendEntry();
+      }
+      if (e.key === 'Escape' && newEntry.value.trim()) {
+        e.preventDefault();
+        if (appendEscPending) {
+          newEntry.value = '';
+          appendEscPending = false;
+          statusEl.textContent = '';
+        } else {
+          appendEscPending = true;
+          statusEl.textContent = 'Press Escape again to clear';
+          setTimeout(() => { appendEscPending = false; statusEl.textContent = ''; }, 3000);
+        }
+      }
+    });
+
+    searchInput.addEventListener('input', (e) => {
+      currentFilter = e.target.value;
+      renderEntries();
+    });
+
+    // ── Service worker ──
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
+    }
+  </script>
+</body>
+</html>
