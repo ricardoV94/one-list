@@ -165,7 +165,7 @@
 
     .history-nav button:disabled { opacity: 0.3; cursor: default; }
 
-    .history-viewing .entry-content { opacity: 0.7; font-style: italic; }
+    .history-viewing .entry-content { opacity: 0.7; }
 
     .btn-edit { color: #188038; border-color: #188038; }
     .btn-rescue { color: #1a73e8; border-color: #1a73e8; }
@@ -180,8 +180,9 @@
       font-family: inherit;
       border: 1px solid #188038;
       border-radius: 6px;
-      resize: vertical;
+      resize: none;
       margin-bottom: 8px;
+      overflow-y: hidden;
     }
 
     #status {
@@ -240,7 +241,15 @@
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script type="module">
-    marked.setOptions({ breaks: true });
+    const renderer = new marked.Renderer();
+    const originalLink = renderer.link.bind(renderer);
+    renderer.link = function(token) {
+      if (token.href && !/^https?:\/\/|^mailto:/i.test(token.href)) {
+        token.href = 'https://' + token.href;
+      }
+      return originalLink(token);
+    };
+    marked.setOptions({ breaks: true, renderer });
     // ── Firebase SDK imports ──
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js';
     import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, GoogleAuthProvider, onAuthStateChanged }
@@ -403,6 +412,12 @@
           textarea.className = 'edit-textarea';
           textarea.value = entry.content;
           contentEl.replaceWith(textarea);
+          textarea.style.height = 'auto';
+          textarea.style.height = textarea.scrollHeight + 'px';
+          textarea.addEventListener('input', () => {
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+          });
           textarea.focus();
 
           // Replace all action buttons with Save + Cancel
@@ -420,7 +435,7 @@
               await updateDoc(doc(db, 'entries', entry.id), {
                 content: newContent,
                 sortTime: serverTimestamp(),
-                editHistory: arrayUnion({ content: entry.content, editedAt: new Date().toISOString() })
+                editHistory: arrayUnion({ content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
               });
             } else {
               renderEntries();
