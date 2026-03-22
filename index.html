@@ -151,7 +151,9 @@
     .entry-content pre { background: #eee; padding: 8px; border-radius: 6px; overflow-x: auto; margin: 0 0 8px 0; }
     .entry-content pre code { background: none; padding: 0; }
     .entry-content blockquote { border-left: 3px solid #ccc; margin: 0 0 8px 0; padding-left: 12px; color: #666; }
-    .entry-content h1, .entry-content h2, .entry-content h3 { margin: 0 0 6px 0; }
+    .entry-content h1 { font-size: 1.2rem; margin: 0 0 6px 0; }
+    .entry-content h2 { font-size: 1.1rem; margin: 0 0 6px 0; }
+    .entry-content h3 { font-size: 1rem; margin: 0 0 6px 0; }
     .entry-content a { color: #1a73e8; }
 
     .entry-actions {
@@ -185,7 +187,6 @@
       user-select: none;
       vertical-align: middle;
     }
-    .version-icon:hover { color: #555; }
 
     .history-nav {
       display: flex;
@@ -216,9 +217,9 @@
 
     .btn-clear-history { color: #d93025; border-color: #d93025; font-size: 0.8rem; padding: 2px 8px; }
 
-    .btn-edit { color: #188038; border-color: #188038; }
-    .btn-rescue { color: #1a73e8; border-color: #1a73e8; }
-    .btn-delete { color: #d93025; border-color: #d93025; }
+    .btn-edit { }
+    .btn-rescue { }
+    .btn-delete { }
     .btn-confirm-delete { background: #d93025 !important; color: #fff !important; border-color: #d93025; }
 
     .edit-textarea {
@@ -257,11 +258,10 @@
       .entry-content a { color: #8ab4f8; }
       .history-nav button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
       .version-icon { color: #aaa; }
-      .version-icon:hover { color: #ddd; }
       .btn-clear-history { color: #f28b82; border-color: #f28b82; }
-      .btn-edit { color: #81c995; border-color: #81c995; }
-      .btn-rescue { color: #8ab4f8; border-color: #8ab4f8; }
-      .btn-delete { color: #f28b82; border-color: #f28b82; }
+      .btn-edit { }
+      .btn-rescue { }
+      .btn-delete { }
       .edit-textarea { background: #2a2a2a; color: #e0e0e0; border-color: #188038; }
       .btn-confirm-delete { background: #d93025 !important; color: #fff !important; }
     }
@@ -277,11 +277,11 @@
 
   <div id="app">
     <header>
-      <h1>One List <span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-22 15:45</span></h1>
+      <h1>One List <span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-22 17:37</span></h1>
       <div class="header-icons">
-        <button id="toggle-view" title="Filter view">All</button>
-        <button id="toggle-search" title="Search">&#128269;</button>
-        <button id="toggle-new" title="New entry">New</button>
+        <button id="toggle-view" title="Filter view"></button>
+        <button id="toggle-search" title="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><line x1="22" y1="22" x2="15" y2="15"/></svg></button>
+        <button id="toggle-new" title="New entry"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
       </div>
     </header>
 
@@ -302,7 +302,9 @@
     <div id="status"></div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"
+          integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR"
+          crossorigin="anonymous"></script>
   <script type="module">
     const renderer = new marked.Renderer();
     const originalLink = renderer.link.bind(renderer);
@@ -319,7 +321,7 @@
       from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js';
     import { initializeFirestore, persistentLocalCache, persistentSingleTabManager,
              collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot,
-             query, orderBy, where, serverTimestamp, arrayUnion, getDoc, getDocs, writeBatch }
+             query, orderBy, where, serverTimestamp, arrayUnion, getDoc }
       from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js';
 
     // ── Firebase config ──
@@ -344,11 +346,15 @@
     // ── Icons (outline SVGs) ──
     const svgAttrs = 'width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
     const ICON = {
-      bump: `<svg ${svgAttrs}><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>`,
+      bump: `<svg ${svgAttrs}><line x1="12" y1="21" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>`,
       edit: `<svg ${svgAttrs}><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`,
       trash: `<svg ${svgAttrs}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
-      share: `<svg ${svgAttrs}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`,
-      unshare: `<svg ${svgAttrs}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/><line x1="2" y1="2" x2="22" y2="22" stroke-width="2.5"/></svg>`,
+      share: `<svg ${svgAttrs}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`,
+      unshare: `<svg ${svgAttrs}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+      clearHistory: `<svg ${svgAttrs}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><circle cx="17" cy="17" r="5" fill="white" stroke-width="1.5"/><path d="M17 15v2l1.5 1" stroke-width="1.5"/></svg>`,
+      viewAll: `<svg ${svgAttrs}><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+      viewShared: `<svg ${svgAttrs}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`,
+      viewUnshared: `<svg ${svgAttrs}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
     };
 
     // ── State ──
@@ -361,6 +367,7 @@
     let ownEntries = [];
     let sharedEntries = [];
     const activeEdits = new Map(); // entryId -> { value, card }
+    let renderAbort = null; // AbortController for per-render listeners
 
     // ── DOM refs ──
     const authSection = document.getElementById('auth-section');
@@ -378,11 +385,19 @@
     const inputArea = document.getElementById('input-area');
     const searchArea = document.getElementById('search-area');
 
+    function updateViewBtn() {
+      const map = { all: [ICON.viewAll, 'All', ''], shared: [ICON.viewShared, 'Shared', 'color:#1a73e8;border-color:#1a73e8'], unshared: [ICON.viewUnshared, 'Unshared', ''] };
+      const [icon, label, style] = map[viewMode];
+      toggleViewBtn.innerHTML = icon + '<span style="margin-left:4px">' + label + '</span>';
+      toggleViewBtn.style.cssText = style;
+    }
+    updateViewBtn();
+
     toggleViewBtn.addEventListener('click', () => {
       if (viewMode === 'all') viewMode = 'shared';
       else if (viewMode === 'shared') viewMode = 'unshared';
       else viewMode = 'all';
-      toggleViewBtn.textContent = viewMode === 'all' ? 'All' : viewMode === 'shared' ? 'Shared' : 'Unshared';
+      updateViewBtn();
       renderEntries();
     });
 
@@ -469,6 +484,8 @@
 
     // ── Render ──
     function renderEntries() {
+      if (renderAbort) renderAbort.abort();
+      renderAbort = new AbortController();
       entriesList.innerHTML = '';
       const filter = currentFilter.toLowerCase();
 
@@ -493,7 +510,9 @@
         dateEl.className = 'entry-date';
         const ts = entry.sortTime?.toDate?.() || entry.createdAt?.toDate?.() || new Date();
         const fmtOpts = { year: 'numeric', month: 'short', day: 'numeric' };
-        dateEl.textContent = ts.toLocaleDateString('en-US', fmtOpts);
+        const dateText = document.createElement('span');
+        dateText.textContent = ts.toLocaleDateString('en-US', fmtOpts);
+        dateEl.appendChild(dateText);
 
         // History state
         const history = entry.editHistory || [];
@@ -512,27 +531,29 @@
           versionIdx = versions.length - 1;
           card.classList.remove('history-viewing');
           contentEl.innerHTML = marked.parse(entry.content);
-          dateEl.childNodes[0].textContent = ts.toLocaleDateString('en-US', fmtOpts);
+          dateText.textContent = ts.toLocaleDateString('en-US', fmtOpts);
         };
 
         // Version icon (clock icon like Google Docs) - shown next to date if entry has history
         if (hasHistory) {
-          const versionIcon = document.createElement('span');
-          versionIcon.className = 'version-icon';
-          versionIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>';
-          versionIcon.title = `${versions.length} versions`;
-          versionIcon.addEventListener('click', () => {
+          const toggleHistory = () => {
             if (historyOpen) { closeHistory(); return; }
             historyOpen = true;
             histNav.style.display = 'flex';
             actions.style.display = 'none';
             updateHistoryView();
-          });
+          };
+          const versionIcon = document.createElement('span');
+          versionIcon.className = 'version-icon';
+          versionIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>';
+          versionIcon.title = `${versions.length} versions`;
+          dateEl.style.cursor = 'pointer';
+          dateEl.addEventListener('click', toggleHistory);
           document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && historyOpen) { e.preventDefault(); closeHistory(); }
-          });
-          dateEl.appendChild(document.createTextNode(' '));
-          dateEl.appendChild(versionIcon);
+          }, { signal: renderAbort.signal });
+          dateEl.insertBefore(document.createTextNode(' '), dateEl.firstChild);
+          dateEl.insertBefore(versionIcon, dateEl.firstChild);
         }
 
         const contentEl = document.createElement('div');
@@ -563,7 +584,7 @@
           nextBtn.disabled = isCurrent;
           const counter = `${versionIdx + 1}/${versions.length}`;
           label.textContent = counter;
-          dateEl.childNodes[0].textContent = isCurrent
+          dateText.textContent = isCurrent
             ? ts.toLocaleDateString('en-US', fmtOpts)
             : fmtDate(versions[versionIdx].date);
           card.classList.toggle('history-viewing', !isCurrent);
@@ -618,49 +639,54 @@
           }, { once: true });
           histActions.appendChild(editVerBtn);
 
-          // Delete version button (owner only, non-current versions)
-          if (entryIsOwn && !isCurrent) {
-            const delVerBtn = document.createElement('button');
-            delVerBtn.className = 'btn-delete';
-            delVerBtn.innerHTML = ICON.trash;
-            delVerBtn.title = 'Delete version';
-            delVerBtn.addEventListener('click', () => {
-              delVerBtn.textContent = 'Confirm?';
-              delVerBtn.className = 'btn-confirm-delete';
-              delVerBtn.addEventListener('click', async () => {
-                const newHistory = history.filter((_, i) => i !== versionIdx);
-                await updateDoc(doc(db, 'entries', entry.id), { editHistory: newHistory });
+          // Delete button on the right — swaps between delete version and delete all history
+          histDeleteSlot.innerHTML = '';
+          if (entryIsOwn) {
+            if (!isCurrent) {
+              // Delete this version
+              const delVerBtn = document.createElement('button');
+              delVerBtn.innerHTML = ICON.trash;
+              delVerBtn.title = 'Delete version';
+              delVerBtn.addEventListener('click', () => {
+                delVerBtn.textContent = 'Confirm?';
+                delVerBtn.className = 'btn-confirm-delete';
+                delVerBtn.addEventListener('click', async () => {
+                  const newHistory = history.filter((_, i) => i !== versionIdx);
+                  await updateDoc(doc(db, 'entries', entry.id), { editHistory: newHistory });
+                }, { once: true });
+                setTimeout(() => {
+                  delVerBtn.innerHTML = ICON.trash;
+                  delVerBtn.className = '';
+                }, 3000);
               }, { once: true });
-              setTimeout(() => {
-                delVerBtn.innerHTML = ICON.trash;
-                delVerBtn.className = 'btn-delete';
-              }, 3000);
-            }, { once: true });
-            histActions.appendChild(delVerBtn);
+              histDeleteSlot.appendChild(delVerBtn);
+            } else {
+              // Delete all history
+              const clearBtn = document.createElement('button');
+              clearBtn.innerHTML = ICON.clearHistory;
+              clearBtn.title = 'Delete all history';
+              clearBtn.addEventListener('click', () => {
+                clearBtn.textContent = 'Confirm?';
+                clearBtn.className = 'btn-confirm-delete';
+                clearBtn.addEventListener('click', async () => {
+                  await updateDoc(doc(db, 'entries', entry.id), { editHistory: [] });
+                }, { once: true });
+                setTimeout(() => {
+                  clearBtn.innerHTML = ICON.clearHistory;
+                  clearBtn.className = '';
+                }, 3000);
+              }, { once: true });
+              histDeleteSlot.appendChild(clearBtn);
+            }
           }
 
         }
 
-        // Layout: [Bump Edit Delete] ... [Delete history ← 3/4 → ✕]
+        // Layout: [Bump Edit] ... [← 3/4 → ✕] [Delete]
         histNav.appendChild(histActions);
 
-        if (entry.owner === currentUserEmail) {
-          const clearHistBtn = document.createElement('button');
-          clearHistBtn.className = 'btn-clear-history';
-          clearHistBtn.textContent = 'Delete history';
-          clearHistBtn.addEventListener('click', () => {
-            clearHistBtn.textContent = 'Confirm?';
-            clearHistBtn.className = 'btn-confirm-delete';
-            clearHistBtn.addEventListener('click', async () => {
-              await updateDoc(doc(db, 'entries', entry.id), { editHistory: [] });
-            }, { once: true });
-            setTimeout(() => {
-              clearHistBtn.textContent = 'Delete history';
-              clearHistBtn.className = 'btn-clear-history';
-            }, 3000);
-          }, { once: true });
-          histRight.appendChild(clearHistBtn);
-        }
+        const histDeleteSlot = document.createElement('span');
+        histDeleteSlot.style.cssText = 'display:flex;';
 
         histRight.appendChild(prevBtn);
         histRight.appendChild(label);
@@ -672,6 +698,7 @@
           closeHistBtn.addEventListener('click', closeHistory);
           histRight.appendChild(closeHistBtn);
         }
+        histRight.appendChild(histDeleteSlot);
         histNav.appendChild(histRight);
 
         function buildViewMode() {
@@ -698,23 +725,8 @@
           actions.appendChild(editBtn);
 
           if (entryIsOwn) {
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'btn-delete';
-            deleteBtn.innerHTML = ICON.trash;
-            deleteBtn.title = 'Delete';
-            deleteBtn.addEventListener('click', () => {
-              deleteBtn.textContent = 'Confirm?';
-              deleteBtn.className = 'btn-confirm-delete';
-              deleteBtn.addEventListener('click', () => removeEntry(entry.id), { once: true });
-              setTimeout(() => {
-                deleteBtn.innerHTML = ICON.trash;
-                deleteBtn.className = 'btn-delete';
-              }, 3000);
-            }, { once: true });
-            actions.appendChild(deleteBtn);
-
             const shareBtn = document.createElement('button');
-            shareBtn.innerHTML = entry.shared ? ICON.unshare : ICON.share;
+            shareBtn.innerHTML = entry.shared ? ICON.share : ICON.unshare;
             shareBtn.title = entry.shared ? 'Unshare' : 'Share';
             if (entry.shared) shareBtn.style.cssText = 'color:#1a73e8;border-color:#1a73e8';
             shareBtn.addEventListener('click', async () => {
@@ -730,11 +742,28 @@
 
           actions.appendChild(dateEl);
 
+          if (entryIsOwn) {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn-delete';
+            deleteBtn.innerHTML = ICON.trash;
+            deleteBtn.title = 'Delete';
+            deleteBtn.addEventListener('click', () => {
+              deleteBtn.textContent = 'Confirm?';
+              deleteBtn.className = 'btn-confirm-delete';
+              deleteBtn.addEventListener('click', () => removeEntry(entry.id), { once: true });
+              setTimeout(() => {
+                deleteBtn.innerHTML = ICON.trash;
+                deleteBtn.className = 'btn-delete';
+              }, 3000);
+            }, { once: true });
+            actions.appendChild(deleteBtn);
+          }
+
           // Reset history view to current
           versionIdx = versions.length - 1;
           card.classList.remove('history-viewing');
           contentEl.innerHTML = marked.parse(entry.content);
-          dateEl.childNodes[0].textContent = ts.toLocaleDateString('en-US', fmtOpts);
+          dateText.textContent = ts.toLocaleDateString('en-US', fmtOpts);
         }
 
         function buildEditMode(initialValue, makeCurrentOnSave, returnToHistory) {
@@ -913,26 +942,6 @@
         renderEntries();
       }
     });
-
-    // ── Migration: assign owner to existing entries (run once from console) ──
-    window.migrateEntries = async () => {
-      if (!currentUserEmail) { console.log('Sign in first'); return; }
-      const snapshot = await getDocs(collection(db, 'entries'));
-      const batch = writeBatch(db);
-      let count = 0;
-      snapshot.forEach(d => {
-        if (!d.data().owner) {
-          batch.update(d.ref, { owner: currentUserEmail, shared: true });
-          count++;
-        }
-      });
-      if (count > 0) {
-        await batch.commit();
-        console.log(`Migrated ${count} entries to owner=${currentUserEmail}, shared=true`);
-      } else {
-        console.log('No entries need migration');
-      }
-    };
 
     // ── Service worker ──
     if ('serviceWorker' in navigator) {
