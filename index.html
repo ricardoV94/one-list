@@ -129,7 +129,7 @@
       margin-bottom: 12px;
     }
 
-    .entry-card.shared { border-left: 3px solid #e8710a; }
+    .entry-card.shared { border-left: 3px solid #1a73e8; }
 
     .entry-date {
       font-size: 0.8rem;
@@ -162,13 +162,16 @@
     }
 
     .entry-actions button {
-      padding: 6px 12px;
+      padding: 6px 10px;
       font-size: 0.85rem;
       border: 1px solid #ddd;
       border-radius: 6px;
       background: #fff;
       cursor: pointer;
       min-height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .entry-actions button:active { background: #eee; }
@@ -195,13 +198,16 @@
     }
 
     .history-nav button {
-      padding: 6px 12px;
+      padding: 6px 10px;
       font-size: 0.85rem;
       border: 1px solid #ddd;
       border-radius: 6px;
       background: #fff;
       cursor: pointer;
       min-height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .history-nav button:disabled { opacity: 0.3; cursor: default; }
@@ -242,7 +248,7 @@
       #search-area.open { background: #1a1a1a; }
       .header-icons button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
       .entry-card { background: #2a2a2a; border-color: #444; }
-      .entry-card.shared { border-left-color: #e8710a; }
+      .entry-card.shared { border-left-color: #1a73e8; }
       .entry-actions button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
       .entry-actions button:active { background: #333; }
       .entry-content code { background: #383838; }
@@ -271,7 +277,7 @@
 
   <div id="app">
     <header>
-      <h1>One List <span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-22 15:14</span></h1>
+      <h1>One List <span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-22 15:45</span></h1>
       <div class="header-icons">
         <button id="toggle-view" title="Filter view">All</button>
         <button id="toggle-search" title="Search">&#128269;</button>
@@ -334,6 +340,16 @@
     });
 
     const entriesRef = collection(db, 'entries');
+
+    // ── Icons (outline SVGs) ──
+    const svgAttrs = 'width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+    const ICON = {
+      bump: `<svg ${svgAttrs}><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>`,
+      edit: `<svg ${svgAttrs}><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>`,
+      trash: `<svg ${svgAttrs}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+      share: `<svg ${svgAttrs}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`,
+      unshare: `<svg ${svgAttrs}><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/><line x1="2" y1="2" x2="22" y2="22" stroke-width="2.5"/></svg>`,
+    };
 
     // ── State ──
     let allEntries = [];
@@ -567,12 +583,14 @@
         function buildHistoryActions() {
           histActions.innerHTML = '';
           const isCurrent = versionIdx === versions.length - 1;
+          const entryIsOwn = entry.owner === currentUserEmail;
 
           // Bump button (only for non-current versions)
           if (!isCurrent) {
             const rescueVerBtn = document.createElement('button');
             rescueVerBtn.className = 'btn-rescue';
-            rescueVerBtn.textContent = 'Bump';
+            rescueVerBtn.innerHTML = ICON.bump;
+            rescueVerBtn.title = 'Bump';
             rescueVerBtn.addEventListener('click', async () => {
               const rescuedContent = versions[versionIdx].content;
               const newHistory = history.map((h, i) => i === versionIdx
@@ -591,7 +609,8 @@
           // Edit button (for any version)
           const editVerBtn = document.createElement('button');
           editVerBtn.className = 'btn-edit';
-          editVerBtn.textContent = 'Edit';
+          editVerBtn.innerHTML = ICON.edit;
+          editVerBtn.title = 'Edit';
           editVerBtn.addEventListener('click', () => {
             histNav.style.display = 'none';
             activeEdits.set(entry.id, { value: versions[versionIdx].content, card });
@@ -599,11 +618,12 @@
           }, { once: true });
           histActions.appendChild(editVerBtn);
 
-          // Delete version button (only for non-current versions)
-          if (!isCurrent) {
+          // Delete version button (owner only, non-current versions)
+          if (entryIsOwn && !isCurrent) {
             const delVerBtn = document.createElement('button');
             delVerBtn.className = 'btn-delete';
-            delVerBtn.textContent = 'Delete';
+            delVerBtn.innerHTML = ICON.trash;
+            delVerBtn.title = 'Delete version';
             delVerBtn.addEventListener('click', () => {
               delVerBtn.textContent = 'Confirm?';
               delVerBtn.className = 'btn-confirm-delete';
@@ -612,7 +632,7 @@
                 await updateDoc(doc(db, 'entries', entry.id), { editHistory: newHistory });
               }, { once: true });
               setTimeout(() => {
-                delVerBtn.textContent = 'Delete';
+                delVerBtn.innerHTML = ICON.trash;
                 delVerBtn.className = 'btn-delete';
               }, 3000);
             }, { once: true });
@@ -624,21 +644,23 @@
         // Layout: [Bump Edit Delete] ... [Delete history ← 3/4 → ✕]
         histNav.appendChild(histActions);
 
-        const clearHistBtn = document.createElement('button');
-        clearHistBtn.className = 'btn-clear-history';
-        clearHistBtn.textContent = 'Delete history';
-        clearHistBtn.addEventListener('click', () => {
-          clearHistBtn.textContent = 'Confirm?';
-          clearHistBtn.className = 'btn-confirm-delete';
-          clearHistBtn.addEventListener('click', async () => {
-            await updateDoc(doc(db, 'entries', entry.id), { editHistory: [] });
+        if (entry.owner === currentUserEmail) {
+          const clearHistBtn = document.createElement('button');
+          clearHistBtn.className = 'btn-clear-history';
+          clearHistBtn.textContent = 'Delete history';
+          clearHistBtn.addEventListener('click', () => {
+            clearHistBtn.textContent = 'Confirm?';
+            clearHistBtn.className = 'btn-confirm-delete';
+            clearHistBtn.addEventListener('click', async () => {
+              await updateDoc(doc(db, 'entries', entry.id), { editHistory: [] });
+            }, { once: true });
+            setTimeout(() => {
+              clearHistBtn.textContent = 'Delete history';
+              clearHistBtn.className = 'btn-clear-history';
+            }, 3000);
           }, { once: true });
-          setTimeout(() => {
-            clearHistBtn.textContent = 'Delete history';
-            clearHistBtn.className = 'btn-clear-history';
-          }, 3000);
-        }, { once: true });
-        histRight.appendChild(clearHistBtn);
+          histRight.appendChild(clearHistBtn);
+        }
 
         histRight.appendChild(prevBtn);
         histRight.appendChild(label);
@@ -657,43 +679,47 @@
           actions.innerHTML = '';
           const entryIsOwn = entry.owner === currentUserEmail;
 
+          const bumpBtn = document.createElement('button');
+          bumpBtn.className = 'btn-rescue';
+          bumpBtn.innerHTML = ICON.bump;
+          bumpBtn.title = 'Bump';
+          bumpBtn.addEventListener('click', () => rescueEntry(entry.id));
+
+          const editBtn = document.createElement('button');
+          editBtn.className = 'btn-edit';
+          editBtn.innerHTML = ICON.edit;
+          editBtn.title = 'Edit';
+          editBtn.addEventListener('click', () => {
+            activeEdits.set(entry.id, { value: entry.content, card });
+            buildEditMode(entry.content, false);
+          }, { once: true });
+
+          actions.appendChild(bumpBtn);
+          actions.appendChild(editBtn);
+
           if (entryIsOwn) {
-            const bumpBtn = document.createElement('button');
-            bumpBtn.className = 'btn-rescue';
-            bumpBtn.textContent = 'Bump';
-            bumpBtn.addEventListener('click', () => rescueEntry(entry.id));
-
-            const editBtn = document.createElement('button');
-            editBtn.className = 'btn-edit';
-            editBtn.textContent = 'Edit';
-            editBtn.addEventListener('click', () => {
-              activeEdits.set(entry.id, { value: entry.content, card });
-              buildEditMode(entry.content, false);
-            }, { once: true });
-
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'btn-delete';
-            deleteBtn.textContent = 'Delete';
+            deleteBtn.innerHTML = ICON.trash;
+            deleteBtn.title = 'Delete';
             deleteBtn.addEventListener('click', () => {
-              deleteBtn.textContent = 'Confirm delete?';
+              deleteBtn.textContent = 'Confirm?';
               deleteBtn.className = 'btn-confirm-delete';
               deleteBtn.addEventListener('click', () => removeEntry(entry.id), { once: true });
               setTimeout(() => {
-                deleteBtn.textContent = 'Delete';
+                deleteBtn.innerHTML = ICON.trash;
                 deleteBtn.className = 'btn-delete';
               }, 3000);
             }, { once: true });
+            actions.appendChild(deleteBtn);
 
             const shareBtn = document.createElement('button');
-            shareBtn.textContent = entry.shared ? 'Unshare' : 'Share';
-            if (entry.shared) shareBtn.style.cssText = 'color:#e8710a;border-color:#e8710a';
+            shareBtn.innerHTML = entry.shared ? ICON.unshare : ICON.share;
+            shareBtn.title = entry.shared ? 'Unshare' : 'Share';
+            if (entry.shared) shareBtn.style.cssText = 'color:#1a73e8;border-color:#1a73e8';
             shareBtn.addEventListener('click', async () => {
               await updateDoc(doc(db, 'entries', entry.id), { shared: !entry.shared });
             });
-
-            actions.appendChild(bumpBtn);
-            actions.appendChild(editBtn);
-            actions.appendChild(deleteBtn);
             actions.appendChild(shareBtn);
           } else {
             const ownerLabel = document.createElement('span');

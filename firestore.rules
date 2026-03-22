@@ -24,9 +24,16 @@ service cloud.firestore {
         && request.resource.data.owner == request.auth.token.email
         && request.resource.data.shared is bool;
 
+      // Owner can update anything except transferring ownership
       allow update: if isAllowed()
         && isOwner()
         && request.resource.data.owner == resource.data.owner;
+
+      // Collaborators can edit shared entries but not change owner or shared status
+      allow update: if isAllowed()
+        && resource.data.shared == true
+        && request.resource.data.owner == resource.data.owner
+        && request.resource.data.shared == resource.data.shared;
 
       allow delete: if isAllowed() && isOwner();
     }
