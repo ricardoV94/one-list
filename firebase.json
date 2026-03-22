@@ -5,7 +5,7 @@
   "hosting": {
     "predeploy": ["bash stamp-deploy.sh"],
     "public": ".",
-    "ignore": ["firebase.json", ".firebase", "node_modules", "README.md"],
+    "ignore": ["firebase.json", ".firebase", "node_modules", "README.md", "*.sh", "firestore.rules", ".git", ".gitignore"],
     "headers": [
       {
         "source": "sw.js",

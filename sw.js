@@ -1,4 +1,4 @@
-const CACHE_NAME = 'onelist-2026-03-22 15:45';
+const CACHE_NAME = 'onelist-2026-03-22 17:37';
 const SHELL_FILES = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -29,7 +29,9 @@ self.addEventListener('fetch', (e) => {
     );
     return;
   }
-  // Network-first for app shell (fall back to cache when offline)
+  // Network-first for app shell only (fall back to cache when offline)
+  const shellUrls = SHELL_FILES.map(f => new URL(f, self.location).href);
+  if (!shellUrls.includes(e.request.url)) return;
   e.respondWith(
     fetch(e.request).then(resp => {
       const clone = resp.clone();
