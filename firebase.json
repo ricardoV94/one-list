@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "predeploy": ["bash stamp-deploy.sh"],
     "public": ".",
     "ignore": ["firebase.json", ".firebase", "node_modules", "README.md"],
     "headers": [

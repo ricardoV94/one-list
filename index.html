@@ -25,7 +25,31 @@
       margin-bottom: 16px;
     }
 
-    header h1 { font-size: 1.4rem; }
+    header h1 { font-size: 1.4rem; flex: 1; }
+
+    .header-icons {
+      display: flex;
+      gap: 4px;
+    }
+
+    .header-icons button {
+      padding: 0 10px;
+      height: 36px;
+      font-size: 0.9rem;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .header-icons button.active {
+      background: #1a73e8;
+      color: #fff;
+      border-color: #1a73e8;
+    }
 
     #auth-btn {
       padding: 8px 16px;
@@ -38,6 +62,7 @@
     }
 
     #auth-section {
+      display: none;
       text-align: center;
       margin-top: 40vh;
     }
@@ -53,12 +78,15 @@
     }
 
     #app { display: none; }
+    #app.cached { display: block; }
 
-    #input-area { margin-bottom: 16px; }
+    #input-area { display: none; margin-bottom: 16px; }
+    #input-area.open { display: block; }
+    #search-area { display: none; }
 
     #new-entry {
       width: 100%;
-      min-height: 80px;
+      min-height: 120px;
       padding: 12px;
       font-size: 1rem;
       font-family: inherit;
@@ -68,19 +96,14 @@
       margin-bottom: 8px;
     }
 
-    #append-btn {
-      width: 100%;
-      padding: 12px;
-      font-size: 1rem;
-      background: #1a73e8;
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      min-height: 44px;
+    .esc-hint {
+      font-size: 0.8rem;
+      color: #888;
+      margin-left: auto;
     }
 
-    #search-area {
+    #search-area.open {
+      display: block;
       position: sticky;
       top: 0;
       background: #f5f5f5;
@@ -108,7 +131,8 @@
     .entry-date {
       font-size: 0.8rem;
       color: #888;
-      margin-bottom: 6px;
+      margin-left: auto;
+      white-space: nowrap;
     }
 
     .entry-content {
@@ -130,6 +154,7 @@
     .entry-actions {
       display: flex;
       gap: 8px;
+      align-items: center;
     }
 
     .entry-actions button {
@@ -144,13 +169,25 @@
 
     .entry-actions button:active { background: #eee; }
 
+    .version-icon {
+      cursor: pointer;
+      font-size: 0.8rem;
+      color: #888;
+      margin-left: 4px;
+      display: inline;
+      user-select: none;
+      vertical-align: middle;
+    }
+    .version-icon:hover { color: #555; }
+
     .history-nav {
       display: flex;
       align-items: center;
       gap: 8px;
       font-size: 0.8rem;
       color: #888;
-      margin-bottom: 6px;
+      margin-top: 8px;
+      flex-wrap: wrap;
     }
 
     .history-nav button {
@@ -166,6 +203,8 @@
     .history-nav button:disabled { opacity: 0.3; cursor: default; }
 
     .history-viewing .entry-content { opacity: 0.7; }
+
+    .btn-clear-history { color: #d93025; border-color: #d93025; font-size: 0.8rem; padding: 2px 8px; }
 
     .btn-edit { color: #188038; border-color: #188038; }
     .btn-rescue { color: #1a73e8; border-color: #1a73e8; }
@@ -196,7 +235,8 @@
       body { background: #1a1a1a; color: #e0e0e0; }
       #new-entry { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
       #search-input { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
-      #search-area { background: #1a1a1a; }
+      #search-area.open { background: #1a1a1a; }
+      .header-icons button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
       .entry-card { background: #2a2a2a; border-color: #444; }
       .entry-actions button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
       .entry-actions button:active { background: #333; }
@@ -205,6 +245,9 @@
       .entry-content blockquote { border-color: #555; color: #aaa; }
       .entry-content a { color: #8ab4f8; }
       .history-nav button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
+      .version-icon { color: #aaa; }
+      .version-icon:hover { color: #ddd; }
+      .btn-clear-history { color: #f28b82; border-color: #f28b82; }
       .btn-edit { color: #81c995; border-color: #81c995; }
       .btn-rescue { color: #8ab4f8; border-color: #8ab4f8; }
       .btn-delete { color: #f28b82; border-color: #f28b82; }
@@ -223,12 +266,20 @@
 
   <div id="app">
     <header>
-      <h1>One List</h1>
+      <h1>One List <span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-22 14:26</span></h1>
+      <div class="header-icons">
+        <button id="toggle-search" title="Search">&#128269;</button>
+        <button id="toggle-new" title="New entry">New</button>
+      </div>
     </header>
 
     <div id="input-area">
       <textarea id="new-entry" placeholder="What's on your mind?"></textarea>
-      <button id="append-btn">Append</button>
+      <div class="entry-actions">
+        <button id="append-btn" class="btn-edit">Save</button>
+        <button id="cancel-new" class="btn-delete">Cancel</button>
+        <span id="new-esc-hint" class="esc-hint"></span>
+      </div>
     </div>
 
     <div id="search-area">
@@ -283,6 +334,7 @@
     let allEntries = [];
     let currentFilter = '';
     let unsubscribe = null;
+    const activeEdits = new Map(); // entryId -> { value, card }
 
     // ── DOM refs ──
     const authSection = document.getElementById('auth-section');
@@ -294,6 +346,26 @@
     const searchInput = document.getElementById('search-input');
     const entriesList = document.getElementById('entries-list');
     const statusEl = document.getElementById('status');
+    const toggleSearchBtn = document.getElementById('toggle-search');
+    const toggleNewBtn = document.getElementById('toggle-new');
+    const inputArea = document.getElementById('input-area');
+    const searchArea = document.getElementById('search-area');
+
+    toggleSearchBtn.addEventListener('click', () => {
+      const opened = searchArea.classList.toggle('open');
+      toggleSearchBtn.classList.toggle('active', opened);
+      if (opened) { searchInput.focus(); }
+      else { searchInput.value = ''; currentFilter = ''; renderEntries(); }
+    });
+
+    toggleNewBtn.addEventListener('click', () => {
+      const opened = inputArea.classList.toggle('open');
+      toggleNewBtn.classList.toggle('active', opened);
+      if (opened) { newEntry.focus(); }
+    });
+
+    // ── Show cached entries immediately while auth resolves ──
+    startListening();
 
     // ── Auth ──
     const provider = new GoogleAuthProvider();
@@ -306,10 +378,11 @@
 
     onAuthStateChanged(auth, (user) => {
       if (user) {
+        appSection.classList.remove('cached');
         authSection.style.display = 'none';
         appSection.style.display = 'block';
-        startListening();
       } else {
+        appSection.classList.remove('cached');
         authSection.style.display = 'block';
         appSection.style.display = 'none';
         if (unsubscribe) { unsubscribe(); unsubscribe = null; }
@@ -322,6 +395,10 @@
       unsubscribe = onSnapshot(entriesQuery, { includeMetadataChanges: true }, (snapshot) => {
         allEntries = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         renderEntries();
+        // Show cached entries before auth resolves
+        if (snapshot.metadata.fromCache && appSection.style.display !== 'block' && allEntries.length > 0) {
+          appSection.classList.add('cached');
+        }
         const hasPending = snapshot.metadata.hasPendingWrites;
         statusEl.textContent = hasPending ? 'Saving...' : '';
       });
@@ -335,92 +412,252 @@
       for (const entry of allEntries) {
         if (filter && !entry.content.toLowerCase().includes(filter)) continue;
 
+        // Reuse existing DOM for entries being edited
+        const edit = activeEdits.get(entry.id);
+        if (edit && edit.card) {
+          entriesList.appendChild(edit.card);
+          continue;
+        }
+
         const card = document.createElement('div');
         card.className = 'entry-card';
 
         const dateEl = document.createElement('div');
         dateEl.className = 'entry-date';
         const ts = entry.sortTime?.toDate?.() || entry.createdAt?.toDate?.() || new Date();
-        dateEl.textContent = ts.toLocaleDateString('en-US', {
-          year: 'numeric', month: 'short', day: 'numeric',
-          hour: '2-digit', minute: '2-digit'
-        });
+        const fmtOpts = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+        dateEl.textContent = ts.toLocaleDateString('en-US', fmtOpts);
+
+        // History state
+        const history = entry.editHistory || [];
+        const hasHistory = history.length > 0;
+        let historyOpen = false;
+        // versions: [oldest edit, ..., newest edit, current]
+        let versions = hasHistory
+          ? [...history.map(h => ({ content: h.content, date: h.editedAt })), { content: entry.content, date: null }]
+          : [{ content: entry.content, date: null }];
+        let versionIdx = versions.length - 1;
+
+        // Version icon (clock icon like Google Docs) - shown next to date if entry has history
+        if (hasHistory) {
+          const versionIcon = document.createElement('span');
+          versionIcon.className = 'version-icon';
+          versionIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>';
+          versionIcon.title = `${versions.length} versions`;
+          const closeHistory = () => {
+            historyOpen = false;
+            histNav.style.display = 'none';
+            actions.style.display = 'flex';
+            versionIdx = versions.length - 1;
+            card.classList.remove('history-viewing');
+            contentEl.innerHTML = marked.parse(entry.content);
+            dateEl.childNodes[0].textContent = ts.toLocaleDateString('en-US', fmtOpts);
+          };
+          versionIcon.addEventListener('click', () => {
+            if (historyOpen) { closeHistory(); return; }
+            historyOpen = true;
+            histNav.style.display = 'flex';
+            actions.style.display = 'none';
+            updateHistoryView();
+          });
+          document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && historyOpen) { e.preventDefault(); closeHistory(); }
+          });
+          dateEl.appendChild(document.createTextNode(' '));
+          dateEl.appendChild(versionIcon);
+        }
 
         const contentEl = document.createElement('div');
         contentEl.className = 'entry-content';
         contentEl.innerHTML = marked.parse(entry.content);
 
-        // History navigation
-        const history = entry.editHistory || [];
-        if (history.length > 0) {
-          const fmtDate = (iso) => new Date(iso).toLocaleDateString('en-US', {
-            year: 'numeric', month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-          });
-          // versions: [oldest edit, ..., newest edit, current]
-          const versions = [
-            ...history.map(h => ({ content: h.content, date: h.editedAt })),
-            { content: entry.content, date: null }
-          ];
-          let versionIdx = versions.length - 1; // start at current
-
-          const histNav = document.createElement('div');
-          histNav.className = 'history-nav';
-          const prevBtn = document.createElement('button');
-          prevBtn.textContent = '\u2190';
-          const nextBtn = document.createElement('button');
-          nextBtn.textContent = '\u2192';
-          const label = document.createElement('span');
-
-          const updateHistoryView = () => {
-            const isCurrent = versionIdx === versions.length - 1;
-            contentEl.innerHTML = marked.parse(versions[versionIdx].content);
-            prevBtn.disabled = versionIdx === 0;
-            nextBtn.disabled = isCurrent;
-            const counter = `${versionIdx + 1}/${versions.length}`;
-            if (isCurrent) {
-              label.textContent = `${counter} (current)`;
-              dateEl.textContent = ts.toLocaleDateString('en-US', {
-                year: 'numeric', month: 'short', day: 'numeric',
-                hour: '2-digit', minute: '2-digit'
-              });
-            } else {
-              label.textContent = counter;
-              dateEl.textContent = fmtDate(versions[versionIdx].date);
-            }
-            card.classList.toggle('history-viewing', !isCurrent);
-          };
-
-          prevBtn.addEventListener('click', () => { if (versionIdx > 0) { versionIdx--; updateHistoryView(); } });
-          nextBtn.addEventListener('click', () => { if (versionIdx < versions.length - 1) { versionIdx++; updateHistoryView(); } });
-
-          updateHistoryView();
-          histNav.appendChild(prevBtn);
-          histNav.appendChild(label);
-          histNav.appendChild(nextBtn);
-          card.appendChild(histNav);
-        }
-
         const actions = document.createElement('div');
         actions.className = 'entry-actions';
 
-        const editBtn = document.createElement('button');
-        editBtn.className = 'btn-edit';
-        editBtn.textContent = 'Edit';
-        editBtn.addEventListener('click', () => {
+        // History navigation (hidden by default, placed after actions)
+        const histNav = document.createElement('div');
+        histNav.className = 'history-nav';
+        histNav.style.display = 'none';
+
+        const fmtDate = (iso) => new Date(iso).toLocaleDateString('en-US', fmtOpts);
+
+        const prevBtn = document.createElement('button');
+        prevBtn.textContent = '\u2190';
+        const nextBtn = document.createElement('button');
+        nextBtn.textContent = '\u2192';
+        const label = document.createElement('span');
+
+        const updateHistoryView = () => {
+          if (!historyOpen) return;
+          const isCurrent = versionIdx === versions.length - 1;
+          contentEl.innerHTML = marked.parse(versions[versionIdx].content);
+          prevBtn.disabled = versionIdx === 0;
+          nextBtn.disabled = isCurrent;
+          const counter = `${versionIdx + 1}/${versions.length}`;
+          label.textContent = isCurrent ? `${counter} (current)` : counter;
+          dateEl.childNodes[0].textContent = isCurrent
+            ? ts.toLocaleDateString('en-US', fmtOpts)
+            : fmtDate(versions[versionIdx].date);
+          card.classList.toggle('history-viewing', !isCurrent);
+          buildHistoryActions();
+        };
+
+        prevBtn.addEventListener('click', () => { if (versionIdx > 0) { versionIdx--; updateHistoryView(); } });
+        nextBtn.addEventListener('click', () => { if (versionIdx < versions.length - 1) { versionIdx++; updateHistoryView(); } });
+
+        // Build version-specific action buttons inside history nav
+        const histActions = document.createElement('span');
+        histActions.style.cssText = 'display:flex;gap:6px;margin-left:auto;';
+
+        function buildHistoryActions() {
+          histActions.innerHTML = '';
+          const isCurrent = versionIdx === versions.length - 1;
+
+          // Edit button (for any version)
+          const editVerBtn = document.createElement('button');
+          editVerBtn.className = 'btn-edit';
+          editVerBtn.textContent = 'Edit';
+          editVerBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;';
+          editVerBtn.addEventListener('click', () => {
+            historyOpen = false;
+            histNav.style.display = 'none';
+            actions.style.display = 'flex';
+            card.classList.remove('history-viewing');
+            activeEdits.set(entry.id, { value: versions[versionIdx].content, card });
+            buildEditMode(versions[versionIdx].content, !isCurrent);
+          }, { once: true });
+          // Bump button (only for non-current versions) - leftmost
+          if (!isCurrent) {
+            const rescueVerBtn = document.createElement('button');
+            rescueVerBtn.className = 'btn-rescue';
+            rescueVerBtn.textContent = 'Bump';
+            rescueVerBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;';
+            rescueVerBtn.addEventListener('click', async () => {
+              const rescuedContent = versions[versionIdx].content;
+              // Replace the rescued version in history with the current content
+              const newHistory = history.map((h, i) => i === versionIdx
+                ? { content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() }
+                : h
+              );
+              await updateDoc(doc(db, 'entries', entry.id), {
+                content: rescuedContent,
+                sortTime: serverTimestamp(),
+                editHistory: newHistory
+              });
+            }, { once: true });
+            histActions.appendChild(rescueVerBtn);
+          }
+
+          histActions.appendChild(editVerBtn);
+
+          // Delete version button (only for non-current versions, and only if there's >1 history entry)
+          if (!isCurrent) {
+            const delVerBtn = document.createElement('button');
+            delVerBtn.className = 'btn-delete';
+            delVerBtn.textContent = 'Delete';
+            delVerBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;';
+            delVerBtn.addEventListener('click', () => {
+              delVerBtn.textContent = 'Confirm?';
+              delVerBtn.className = 'btn-confirm-delete';
+              delVerBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;';
+              delVerBtn.addEventListener('click', async () => {
+                // Remove this specific version from editHistory
+                const newHistory = history.filter((_, i) => i !== versionIdx);
+                await updateDoc(doc(db, 'entries', entry.id), { editHistory: newHistory });
+              }, { once: true });
+              setTimeout(() => {
+                delVerBtn.textContent = 'Delete';
+                delVerBtn.className = 'btn-delete';
+                delVerBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;';
+              }, 3000);
+            }, { once: true });
+            histActions.appendChild(delVerBtn);
+          }
+
+          // Delete all history button
+          const clearHistBtn = document.createElement('button');
+          clearHistBtn.className = 'btn-clear-history';
+          clearHistBtn.textContent = 'Delete history';
+          clearHistBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;border:1px solid;border-radius:4px;cursor:pointer;';
+          clearHistBtn.addEventListener('click', () => {
+            clearHistBtn.textContent = 'Confirm?';
+            clearHistBtn.className = 'btn-confirm-delete';
+            clearHistBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;border:1px solid;border-radius:4px;background:#d93025;color:#fff;border-color:#d93025;cursor:pointer;';
+            clearHistBtn.addEventListener('click', async () => {
+              await updateDoc(doc(db, 'entries', entry.id), { editHistory: [] });
+            }, { once: true });
+            setTimeout(() => {
+              clearHistBtn.textContent = 'Delete history';
+              clearHistBtn.className = 'btn-clear-history';
+              clearHistBtn.style.cssText = 'font-size:0.8rem;padding:2px 8px;min-height:24px;border:1px solid;border-radius:4px;cursor:pointer;';
+            }, 3000);
+          }, { once: true });
+          histActions.appendChild(clearHistBtn);
+        }
+
+        histNav.appendChild(prevBtn);
+        histNav.appendChild(label);
+        histNav.appendChild(nextBtn);
+        histNav.appendChild(histActions);
+
+        function buildViewMode() {
+          actions.style.display = 'flex';
+          actions.innerHTML = '';
+          const editBtn = document.createElement('button');
+          editBtn.className = 'btn-edit';
+          editBtn.textContent = 'Edit';
+          editBtn.addEventListener('click', () => {
+            activeEdits.set(entry.id, { value: entry.content, card });
+            buildEditMode(entry.content, false);
+          }, { once: true });
+
+          const bumpBtn = document.createElement('button');
+          bumpBtn.className = 'btn-rescue';
+          bumpBtn.textContent = 'Bump';
+          bumpBtn.addEventListener('click', () => rescueEntry(entry.id));
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.className = 'btn-delete';
+          deleteBtn.textContent = 'Delete';
+          deleteBtn.addEventListener('click', () => {
+            deleteBtn.textContent = 'Confirm delete?';
+            deleteBtn.className = 'btn-confirm-delete';
+            deleteBtn.addEventListener('click', () => removeEntry(entry.id), { once: true });
+            setTimeout(() => {
+              deleteBtn.textContent = 'Delete';
+              deleteBtn.className = 'btn-delete';
+            }, 3000);
+          }, { once: true });
+
+          actions.appendChild(bumpBtn);
+          actions.appendChild(editBtn);
+          actions.appendChild(deleteBtn);
+          actions.appendChild(dateEl);
+
+          // Reset history view to current
+          versionIdx = versions.length - 1;
+          card.classList.remove('history-viewing');
+          contentEl.innerHTML = marked.parse(entry.content);
+          dateEl.childNodes[0].textContent = ts.toLocaleDateString('en-US', fmtOpts);
+        }
+
+        function buildEditMode(initialValue, makeCurrentOnSave) {
+          // Swap content for textarea
           const textarea = document.createElement('textarea');
           textarea.className = 'edit-textarea';
-          textarea.value = entry.content;
-          contentEl.replaceWith(textarea);
+          textarea.value = initialValue;
+          const currentContent = card.querySelector('.entry-content, .edit-textarea');
+          if (currentContent) currentContent.replaceWith(textarea);
           textarea.style.height = 'auto';
           textarea.style.height = textarea.scrollHeight + 'px';
           textarea.addEventListener('input', () => {
             textarea.style.height = 'auto';
             textarea.style.height = textarea.scrollHeight + 'px';
+            activeEdits.set(entry.id, { value: textarea.value, card });
           });
           textarea.focus();
 
-          // Replace all action buttons with Save + Cancel
+          // Replace action buttons with Save + Cancel
           actions.innerHTML = '';
           const saveBtn = document.createElement('button');
           saveBtn.className = 'btn-edit';
@@ -428,35 +665,53 @@
           const cancelBtn = document.createElement('button');
           cancelBtn.className = 'btn-delete';
           cancelBtn.textContent = 'Cancel';
+          const escHint = document.createElement('span');
+          escHint.className = 'esc-hint';
+
+          const cancelEdit = () => {
+            activeEdits.delete(entry.id);
+            contentEl.innerHTML = marked.parse(entry.content);
+            textarea.replaceWith(contentEl);
+            buildViewMode();
+          };
 
           const saveEdit = async () => {
             const newContent = textarea.value.trim();
             if (newContent && newContent !== entry.content) {
+              activeEdits.delete(entry.id);
+              await updateDoc(doc(db, 'entries', entry.id), {
+                content: newContent,
+                sortTime: serverTimestamp(),
+                editHistory: arrayUnion({ content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
+              });
+            } else if (makeCurrentOnSave && newContent === initialValue && newContent !== entry.content) {
+              // Editing a previous version without changes - still rescue it as current
+              activeEdits.delete(entry.id);
               await updateDoc(doc(db, 'entries', entry.id), {
                 content: newContent,
                 sortTime: serverTimestamp(),
                 editHistory: arrayUnion({ content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
               });
             } else {
-              renderEntries();
+              cancelEdit();
             }
           };
 
           saveBtn.addEventListener('click', saveEdit);
-          cancelBtn.addEventListener('click', () => renderEntries());
+          cancelBtn.addEventListener('click', cancelEdit);
 
           let editEscPending = false;
           textarea.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
               e.preventDefault();
               if (textarea.value.trim() === entry.content) {
-                renderEntries(); // no changes, cancel immediately
+                cancelEdit();
               } else if (editEscPending) {
-                renderEntries();
+                cancelEdit();
               } else {
                 editEscPending = true;
-                statusEl.textContent = 'Press Escape again to discard changes';
-                setTimeout(() => { editEscPending = false; statusEl.textContent = ''; }, 3000);
+                escHint.textContent = 'Esc again to discard';
+                setTimeout(() => { editEscPending = false; escHint.textContent = ''; }, 3000);
               }
             }
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveEdit(); }
@@ -464,32 +719,18 @@
 
           actions.appendChild(saveBtn);
           actions.appendChild(cancelBtn);
-        }, { once: true });
+          actions.appendChild(escHint);
+        }
 
-        const rescueBtn = document.createElement('button');
-        rescueBtn.className = 'btn-rescue';
-        rescueBtn.textContent = 'Rescue';
-        rescueBtn.addEventListener('click', () => rescueEntry(entry.id));
-
-        const deleteBtn = document.createElement('button');
-        deleteBtn.className = 'btn-delete';
-        deleteBtn.textContent = 'Delete';
-        deleteBtn.addEventListener('click', () => {
-          deleteBtn.textContent = 'Confirm delete?';
-          deleteBtn.className = 'btn-confirm-delete';
-          deleteBtn.addEventListener('click', () => removeEntry(entry.id), { once: true });
-          setTimeout(() => {
-            deleteBtn.textContent = 'Delete';
-            deleteBtn.className = 'btn-delete';
-          }, 3000);
-        }, { once: true });
-
-        actions.appendChild(editBtn);
-        actions.appendChild(rescueBtn);
-        actions.appendChild(deleteBtn);
-        card.appendChild(dateEl);
         card.appendChild(contentEl);
         card.appendChild(actions);
+        card.appendChild(histNav);
+
+        if (activeEdits.has(entry.id)) {
+          buildEditMode(activeEdits.get(entry.id).value, false);
+        } else {
+          buildViewMode();
+        }
         entriesList.appendChild(card);
       }
     }
@@ -498,7 +739,7 @@
     async function appendEntry() {
       const content = newEntry.value.trim();
       if (!content) return;
-      newEntry.value = '';
+      closeNewEntry();
       await addDoc(entriesRef, {
         content,
         createdAt: serverTimestamp(),
@@ -515,24 +756,40 @@
     }
 
     // ── Event listeners ──
-    appendBtn.addEventListener('click', appendEntry);
+    const cancelNewBtn = document.getElementById('cancel-new');
+    const newEscHint = document.getElementById('new-esc-hint');
 
-    let appendEscPending = false;
+    function closeNewEntry() {
+      newEntry.value = '';
+      newEntry.style.height = 'auto';
+      newEscHint.textContent = '';
+      inputArea.classList.remove('open');
+      toggleNewBtn.classList.remove('active');
+    }
+
+    appendBtn.addEventListener('click', appendEntry);
+    cancelNewBtn.addEventListener('click', () => closeNewEntry());
+
+    newEntry.addEventListener('input', () => {
+      newEntry.style.height = 'auto';
+      newEntry.style.height = newEntry.scrollHeight + 'px';
+    });
+
+    let newEscPending = false;
     newEntry.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         appendEntry();
       }
-      if (e.key === 'Escape' && newEntry.value.trim()) {
+      if (e.key === 'Escape') {
         e.preventDefault();
-        if (appendEscPending) {
-          newEntry.value = '';
-          appendEscPending = false;
-          statusEl.textContent = '';
+        if (!newEntry.value.trim() || newEscPending) {
+          closeNewEntry();
+          newEscPending = false;
         } else {
-          appendEscPending = true;
-          statusEl.textContent = 'Press Escape again to clear';
-          setTimeout(() => { appendEscPending = false; statusEl.textContent = ''; }, 3000);
+          newEscPending = true;
+          newEscHint.textContent = 'Esc again to discard';
+          setTimeout(() => { newEscPending = false; newEscHint.textContent = ''; }, 3000);
         }
       }
     });
