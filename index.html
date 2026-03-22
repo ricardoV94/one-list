@@ -129,6 +129,8 @@
       margin-bottom: 12px;
     }
 
+    .entry-card.shared { border-left: 3px solid #e8710a; }
+
     .entry-date {
       font-size: 0.8rem;
       color: #888;
@@ -240,6 +242,7 @@
       #search-area.open { background: #1a1a1a; }
       .header-icons button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
       .entry-card { background: #2a2a2a; border-color: #444; }
+      .entry-card.shared { border-left-color: #e8710a; }
       .entry-actions button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
       .entry-actions button:active { background: #333; }
       .entry-content code { background: #383838; }
@@ -268,8 +271,9 @@
 
   <div id="app">
     <header>
-      <h1>One List <span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-22 14:51</span></h1>
+      <h1>One List <span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-22 15:14</span></h1>
       <div class="header-icons">
+        <button id="toggle-view" title="Filter view">All</button>
         <button id="toggle-search" title="Search">&#128269;</button>
         <button id="toggle-new" title="New entry">New</button>
       </div>
@@ -309,7 +313,7 @@
       from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js';
     import { initializeFirestore, persistentLocalCache, persistentSingleTabManager,
              collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot,
-             query, orderBy, serverTimestamp, arrayUnion }
+             query, orderBy, where, serverTimestamp, arrayUnion, getDoc, getDocs, writeBatch }
       from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js';
 
     // ── Firebase config ──
@@ -330,12 +334,16 @@
     });
 
     const entriesRef = collection(db, 'entries');
-    const entriesQuery = query(entriesRef, orderBy('sortTime', 'desc'));
 
     // ── State ──
     let allEntries = [];
     let currentFilter = '';
-    let unsubscribe = null;
+    let currentUserEmail = null;
+    let viewMode = 'all'; // 'all' | 'shared' | 'unshared'
+    let unsubOwn = null;
+    let unsubShared = null;
+    let ownEntries = [];
+    let sharedEntries = [];
     const activeEdits = new Map(); // entryId -> { value, card }
 
     // ── DOM refs ──
@@ -348,10 +356,19 @@
     const searchInput = document.getElementById('search-input');
     const entriesList = document.getElementById('entries-list');
     const statusEl = document.getElementById('status');
+    const toggleViewBtn = document.getElementById('toggle-view');
     const toggleSearchBtn = document.getElementById('toggle-search');
     const toggleNewBtn = document.getElementById('toggle-new');
     const inputArea = document.getElementById('input-area');
     const searchArea = document.getElementById('search-area');
+
+    toggleViewBtn.addEventListener('click', () => {
+      if (viewMode === 'all') viewMode = 'shared';
+      else if (viewMode === 'shared') viewMode = 'unshared';
+      else viewMode = 'all';
+      toggleViewBtn.textContent = viewMode === 'all' ? 'All' : viewMode === 'shared' ? 'Shared' : 'Unshared';
+      renderEntries();
+    });
 
     toggleSearchBtn.addEventListener('click', () => {
       const opened = searchArea.classList.toggle('open');
@@ -366,44 +383,72 @@
       if (opened) { newEntry.focus(); }
     });
 
-    // ── Show cached entries immediately while auth resolves ──
-    startListening();
-
     // ── Auth ──
     const provider = new GoogleAuthProvider();
 
     signInBtn.addEventListener('click', () => {
-      // Try popup first, fall back to redirect
       signInWithPopup(auth, provider).catch(() => signInWithRedirect(auth, provider));
     });
     getRedirectResult(auth).catch(() => {});
 
-    onAuthStateChanged(auth, (user) => {
+    onAuthStateChanged(auth, async (user) => {
       if (user) {
-        appSection.classList.remove('cached');
+        currentUserEmail = user.email;
+        // Check if user is in allowed list
+        try {
+          const allowedDoc = await getDoc(doc(db, 'config', 'allowedUsers'));
+          if (allowedDoc.exists() && !allowedDoc.data().emails.includes(user.email)) {
+            await signOut(auth);
+            alert('Access denied. Your email is not authorized.');
+            return;
+          }
+        } catch (e) {
+          // If config doc doesn't exist yet, allow access (initial setup)
+        }
         authSection.style.display = 'none';
         appSection.style.display = 'block';
+        startListening();
       } else {
-        appSection.classList.remove('cached');
+        currentUserEmail = null;
         authSection.style.display = 'block';
         appSection.style.display = 'none';
-        if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+        if (unsubOwn) { unsubOwn(); unsubOwn = null; }
+        if (unsubShared) { unsubShared(); unsubShared = null; }
       }
     });
 
-    // ── Real-time listener ──
+    // ── Real-time listeners (two queries merged) ──
     function startListening() {
-      if (unsubscribe) return;
-      unsubscribe = onSnapshot(entriesQuery, { includeMetadataChanges: true }, (snapshot) => {
-        allEntries = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        renderEntries();
-        // Show cached entries before auth resolves
-        if (snapshot.metadata.fromCache && appSection.style.display !== 'block' && allEntries.length > 0) {
-          appSection.classList.add('cached');
-        }
+      if (unsubOwn) return;
+
+      const ownQuery = query(entriesRef, where('owner', '==', currentUserEmail), orderBy('sortTime', 'desc'));
+      const sharedQuery = query(entriesRef, where('shared', '==', true), orderBy('sortTime', 'desc'));
+
+      unsubOwn = onSnapshot(ownQuery, { includeMetadataChanges: true }, (snapshot) => {
+        ownEntries = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        mergeAndRender();
         const hasPending = snapshot.metadata.hasPendingWrites;
         statusEl.textContent = hasPending ? 'Saving...' : '';
       });
+
+      unsubShared = onSnapshot(sharedQuery, { includeMetadataChanges: true }, (snapshot) => {
+        sharedEntries = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        mergeAndRender();
+        const hasPending = snapshot.metadata.hasPendingWrites;
+        statusEl.textContent = hasPending ? 'Saving...' : '';
+      });
+    }
+
+    function mergeAndRender() {
+      const map = new Map();
+      for (const e of ownEntries) map.set(e.id, e);
+      for (const e of sharedEntries) map.set(e.id, e);
+      allEntries = [...map.values()].sort((a, b) => {
+        const ta = a.sortTime?.toMillis?.() || 0;
+        const tb = b.sortTime?.toMillis?.() || 0;
+        return tb - ta;
+      });
+      renderEntries();
     }
 
     // ── Render ──
@@ -412,6 +457,10 @@
       const filter = currentFilter.toLowerCase();
 
       for (const entry of allEntries) {
+        // View mode filter
+        const isOwn = entry.owner === currentUserEmail;
+        if (viewMode === 'unshared' && (!isOwn || entry.shared)) continue;
+        if (viewMode === 'shared' && !entry.shared) continue;
         if (filter && !entry.content.toLowerCase().includes(filter)) continue;
 
         // Reuse existing DOM for entries being edited
@@ -422,7 +471,7 @@
         }
 
         const card = document.createElement('div');
-        card.className = 'entry-card';
+        card.className = 'entry-card' + (entry.shared ? ' shared' : '');
 
         const dateEl = document.createElement('div');
         dateEl.className = 'entry-date';
@@ -606,35 +655,53 @@
         function buildViewMode() {
           actions.style.display = 'flex';
           actions.innerHTML = '';
-          const editBtn = document.createElement('button');
-          editBtn.className = 'btn-edit';
-          editBtn.textContent = 'Edit';
-          editBtn.addEventListener('click', () => {
-            activeEdits.set(entry.id, { value: entry.content, card });
-            buildEditMode(entry.content, false);
-          }, { once: true });
+          const entryIsOwn = entry.owner === currentUserEmail;
 
-          const bumpBtn = document.createElement('button');
-          bumpBtn.className = 'btn-rescue';
-          bumpBtn.textContent = 'Bump';
-          bumpBtn.addEventListener('click', () => rescueEntry(entry.id));
+          if (entryIsOwn) {
+            const bumpBtn = document.createElement('button');
+            bumpBtn.className = 'btn-rescue';
+            bumpBtn.textContent = 'Bump';
+            bumpBtn.addEventListener('click', () => rescueEntry(entry.id));
 
-          const deleteBtn = document.createElement('button');
-          deleteBtn.className = 'btn-delete';
-          deleteBtn.textContent = 'Delete';
-          deleteBtn.addEventListener('click', () => {
-            deleteBtn.textContent = 'Confirm delete?';
-            deleteBtn.className = 'btn-confirm-delete';
-            deleteBtn.addEventListener('click', () => removeEntry(entry.id), { once: true });
-            setTimeout(() => {
-              deleteBtn.textContent = 'Delete';
-              deleteBtn.className = 'btn-delete';
-            }, 3000);
-          }, { once: true });
+            const editBtn = document.createElement('button');
+            editBtn.className = 'btn-edit';
+            editBtn.textContent = 'Edit';
+            editBtn.addEventListener('click', () => {
+              activeEdits.set(entry.id, { value: entry.content, card });
+              buildEditMode(entry.content, false);
+            }, { once: true });
 
-          actions.appendChild(bumpBtn);
-          actions.appendChild(editBtn);
-          actions.appendChild(deleteBtn);
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn-delete';
+            deleteBtn.textContent = 'Delete';
+            deleteBtn.addEventListener('click', () => {
+              deleteBtn.textContent = 'Confirm delete?';
+              deleteBtn.className = 'btn-confirm-delete';
+              deleteBtn.addEventListener('click', () => removeEntry(entry.id), { once: true });
+              setTimeout(() => {
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.className = 'btn-delete';
+              }, 3000);
+            }, { once: true });
+
+            const shareBtn = document.createElement('button');
+            shareBtn.textContent = entry.shared ? 'Unshare' : 'Share';
+            if (entry.shared) shareBtn.style.cssText = 'color:#e8710a;border-color:#e8710a';
+            shareBtn.addEventListener('click', async () => {
+              await updateDoc(doc(db, 'entries', entry.id), { shared: !entry.shared });
+            });
+
+            actions.appendChild(bumpBtn);
+            actions.appendChild(editBtn);
+            actions.appendChild(deleteBtn);
+            actions.appendChild(shareBtn);
+          } else {
+            const ownerLabel = document.createElement('span');
+            ownerLabel.className = 'entry-date';
+            ownerLabel.textContent = (entry.owner || '').split('@')[0];
+            actions.appendChild(ownerLabel);
+          }
+
           actions.appendChild(dateEl);
 
           // Reset history view to current
@@ -753,7 +820,9 @@
       await addDoc(entriesRef, {
         content,
         createdAt: serverTimestamp(),
-        sortTime: serverTimestamp()
+        sortTime: serverTimestamp(),
+        owner: currentUserEmail,
+        shared: false
       });
     }
 
@@ -818,6 +887,26 @@
         renderEntries();
       }
     });
+
+    // ── Migration: assign owner to existing entries (run once from console) ──
+    window.migrateEntries = async () => {
+      if (!currentUserEmail) { console.log('Sign in first'); return; }
+      const snapshot = await getDocs(collection(db, 'entries'));
+      const batch = writeBatch(db);
+      let count = 0;
+      snapshot.forEach(d => {
+        if (!d.data().owner) {
+          batch.update(d.ref, { owner: currentUserEmail, shared: true });
+          count++;
+        }
+      });
+      if (count > 0) {
+        await batch.commit();
+        console.log(`Migrated ${count} entries to owner=${currentUserEmail}, shared=true`);
+      } else {
+        console.log('No entries need migration');
+      }
+    };
 
     // ── Service worker ──
     if ('serviceWorker' in navigator) {

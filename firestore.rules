@@ -1,0 +1,34 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAllowed() {
+      return request.auth != null
+        && request.auth.token.email in get(/databases/$(database)/documents/config/allowedUsers).data.emails;
+    }
+
+    function isOwner() {
+      return resource.data.owner == request.auth.token.email;
+    }
+
+    match /config/{doc} {
+      allow read: if isAllowed();
+      allow write: if false;
+    }
+
+    match /entries/{entryId} {
+      allow read: if isAllowed()
+        && (resource.data.owner == request.auth.token.email || resource.data.shared == true);
+
+      allow create: if isAllowed()
+        && request.resource.data.owner == request.auth.token.email
+        && request.resource.data.shared is bool;
+
+      allow update: if isAllowed()
+        && isOwner()
+        && request.resource.data.owner == resource.data.owner;
+
+      allow delete: if isAllowed() && isOwner();
+    }
+  }
+}
