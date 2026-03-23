@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#1a73e8">
+  <meta name="theme-color" content="#7bae7f">
   <link rel="manifest" href="/manifest.json">
   <title>One List</title>
   <style>
@@ -100,7 +100,6 @@
     .esc-hint {
       font-size: 0.8rem;
       color: #888;
-      margin-left: auto;
     }
 
     #search-area.open {
@@ -155,6 +154,25 @@
     .entry-content h2 { font-size: 1.1rem; margin: 0 0 6px 0; }
     .entry-content h3 { font-size: 1rem; margin: 0 0 6px 0; }
     .entry-content a { color: #1a73e8; }
+    .entry-content li:has(input[type="checkbox"]) { list-style: none; margin-left: -24px; }
+    .entry-content li:has(input[type="checkbox"]) input[type="checkbox"] { margin-right: 6px; }
+    .entry-content li:has(input[type="checkbox"]) > ul { margin-left: 24px; }
+    .entry-content input[type="checkbox"] {
+      appearance: none; -webkit-appearance: none;
+      width: 18px; height: 18px; min-width: 18px;
+      border: 2px solid #888; border-radius: 4px;
+      cursor: pointer; position: relative; top: 2px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .entry-content input[type="checkbox"]:checked {
+      background: #1a73e8; border-color: #1a73e8;
+    }
+    .entry-content input[type="checkbox"]:checked::after {
+      content: '✓'; color: white; font-size: 13px; font-weight: bold;
+    }
+    .entry-content input[type="checkbox"]:hover {
+      border-color: #1a73e8;
+    }
 
     .entry-actions {
       display: flex;
@@ -177,6 +195,7 @@
     }
 
     .entry-actions button:active { background: #eee; }
+    .icon-bg { fill: #fff; }
 
     .version-icon {
       cursor: pointer;
@@ -252,6 +271,7 @@
       .entry-card.shared { border-left-color: #1a73e8; }
       .entry-actions button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
       .entry-actions button:active { background: #333; }
+      .icon-bg { fill: #2a2a2a; }
       .entry-content code { background: #383838; }
       .entry-content pre { background: #383838; }
       .entry-content blockquote { border-color: #555; color: #aaa; }
@@ -277,7 +297,7 @@
 
   <div id="app">
     <header>
-      <h1>One List <span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-22 17:37</span></h1>
+      <h1>One List <span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-23 10:18</span></h1>
       <div class="header-icons">
         <button id="toggle-view" title="Filter view"></button>
         <button id="toggle-search" title="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><line x1="22" y1="22" x2="15" y2="15"/></svg></button>
@@ -291,6 +311,7 @@
         <button id="append-btn" class="btn-edit">Save</button>
         <button id="cancel-new" class="btn-delete">Cancel</button>
         <span id="new-esc-hint" class="esc-hint"></span>
+        <button id="new-checkbox-btn" title="Toggle checkbox" style="margin-left:auto;"></button>
       </div>
     </div>
 
@@ -314,7 +335,102 @@
       }
       return originalLink(token);
     };
-    marked.setOptions({ breaks: true, renderer });
+    marked.setOptions({ breaks: true, gfm: true, renderer });
+
+    const pendingCheckboxUpdates = new Set();
+    function attachCheckboxHandlers(contentEl, entry) {
+      contentEl.querySelectorAll('input[type="checkbox"]').forEach((cb, idx) => {
+        cb.disabled = false;
+        cb.addEventListener('change', async () => {
+          let count = 0;
+          const newContent = entry.content.replace(/^(\s*[-*]\s+)\[([ xX])\]/gm, (match, prefix, check) => {
+            if (count++ === idx) {
+              return prefix + (cb.checked ? '[x]' : '[ ]');
+            }
+            return match;
+          });
+          if (newContent !== entry.content) {
+            entry.content = newContent;
+            pendingCheckboxUpdates.add(entry.id);
+            await updateDoc(doc(db, 'entries', entry.id), { content: newContent });
+            pendingCheckboxUpdates.delete(entry.id);
+          }
+        });
+      });
+    }
+    function handleListContinuation(e, textarea) {
+      if (e.key !== 'Enter' || e.ctrlKey || e.metaKey || e.shiftKey) return false;
+      const { selectionStart, value } = textarea;
+      const before = value.slice(0, selectionStart);
+      const lineStart = before.lastIndexOf('\n') + 1;
+      const line = before.slice(lineStart);
+      // Match bullet/checkbox/numbered list patterns
+      const match = line.match(/^(\s*)([-*]\s+\[([ xX])\]\s?|[-*]\s+|(\d+)\.\s+)(.*)/);
+      if (!match) return false;
+      const [, indent, prefix, checkbox, num, content] = match;
+      // If current line's content is empty, clear the list marker instead
+      if (!content) {
+        e.preventDefault();
+        textarea.setRangeText('', lineStart, selectionStart, 'end');
+        textarea.dispatchEvent(new Event('input'));
+        return true;
+      }
+      let newPrefix;
+      if (checkbox !== undefined) {
+        // Checkbox list - always insert unchecked
+        newPrefix = indent + prefix.replace(/\[[ xX]\]/, '[ ]');
+      } else if (num) {
+        newPrefix = indent + (parseInt(num) + 1) + '. ';
+      } else {
+        newPrefix = indent + prefix;
+      }
+      e.preventDefault();
+      textarea.setRangeText('\n' + newPrefix, selectionStart, selectionStart, 'end');
+      textarea.dispatchEvent(new Event('input'));
+      return true;
+    }
+
+    function toggleCheckboxMarker(textarea) {
+      const { selectionStart, selectionEnd, value } = textarea;
+      // Expand to full line boundaries
+      const fullStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+      const rawEnd = selectionStart === selectionEnd
+        ? value.indexOf('\n', selectionStart)
+        : value.indexOf('\n', selectionEnd);
+      const fullEnd = rawEnd === -1 ? value.length : rawEnd;
+
+      const before = value.slice(0, fullStart);
+      const selected = value.slice(fullStart, fullEnd);
+      const after = value.slice(fullEnd);
+      const lines = selected.split('\n');
+      const hasContent = lines.some(l => l.trim());
+      const allHaveCheckbox = hasContent && lines.every(l => !l.trim() || /^\s*[-*]\s+\[[ xX]\]\s/.test(l));
+      const replacement = lines.map(line => {
+        if (hasContent && !line.trim()) return line;
+        if (allHaveCheckbox) {
+          return line.replace(/^(\s*)[-*]\s+\[[ xX]\]\s?/, '$1');
+        }
+        if (/^\s*[-*]\s+\[[ xX]\]\s/.test(line)) return line;
+        return line.replace(/^(\s*)/, '$1- [ ] ');
+      }).join('\n');
+      textarea.value = before + replacement + after;
+      textarea.selectionStart = before.length;
+      textarea.selectionEnd = before.length + replacement.length;
+      textarea.dispatchEvent(new Event('input'));
+      textarea.focus();
+    }
+
+    function makeCheckboxButton(textarea) {
+      const btn = document.createElement('button');
+      btn.innerHTML = ICON.checkbox;
+      btn.title = 'Toggle checkbox';
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        toggleCheckboxMarker(textarea);
+      });
+      return btn;
+    }
+
     // ── Firebase SDK imports ──
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js';
     import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, GoogleAuthProvider, onAuthStateChanged }
@@ -351,10 +467,11 @@
       trash: `<svg ${svgAttrs}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
       share: `<svg ${svgAttrs}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`,
       unshare: `<svg ${svgAttrs}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
-      clearHistory: `<svg ${svgAttrs}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><circle cx="17" cy="17" r="5" fill="white" stroke-width="1.5"/><path d="M17 15v2l1.5 1" stroke-width="1.5"/></svg>`,
+      clearHistory: `<svg ${svgAttrs}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><circle class="icon-bg" cx="17" cy="17" r="5" stroke-width="1.5"/><path d="M17 15v2l1.5 1" stroke-width="1.5"/></svg>`,
       viewAll: `<svg ${svgAttrs}><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
       viewShared: `<svg ${svgAttrs}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`,
       viewUnshared: `<svg ${svgAttrs}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+      checkbox: `<svg ${svgAttrs}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>`,
     };
 
     // ── State ──
@@ -439,6 +556,21 @@
         authSection.style.display = 'none';
         appSection.style.display = 'block';
         startListening();
+
+        // ── Handle Web Share Target ──
+        const shareParams = new URLSearchParams(window.location.search);
+        const shareTitle = shareParams.get('title');
+        const shareText = shareParams.get('text');
+        const shareUrl = shareParams.get('url');
+        if (shareTitle || shareText || shareUrl) {
+          const parts = [shareTitle, shareText, shareUrl].filter(Boolean);
+          newEntry.value = parts.join('\n\n');
+          inputArea.classList.add('open');
+          toggleNewBtn.classList.add('active');
+          newEntry.dispatchEvent(new Event('input'));
+          newEntry.focus();
+          history.replaceState(null, '', '/');
+        }
       } else {
         currentUserEmail = null;
         authSection.style.display = 'block';
@@ -483,24 +615,62 @@
     }
 
     // ── Render ──
+    const cardCache = new Map(); // entry.id -> { card, entry, contentEl, dateText, ts, fmtOpts, versions, buildViewMode }
+
     function renderEntries() {
       if (renderAbort) renderAbort.abort();
       renderAbort = new AbortController();
-      entriesList.innerHTML = '';
       const filter = currentFilter.toLowerCase();
 
-      for (const entry of allEntries) {
+      const visibleIds = new Set();
+      const orderedCards = [];
+
+      for (let entry of allEntries) {
         // View mode filter
         const isOwn = entry.owner === currentUserEmail;
         if (viewMode === 'unshared' && (!isOwn || entry.shared)) continue;
         if (viewMode === 'shared' && !entry.shared) continue;
         if (filter && !entry.content.toLowerCase().includes(filter)) continue;
 
+        visibleIds.add(entry.id);
+
         // Reuse existing DOM for entries being edited
         const edit = activeEdits.get(entry.id);
         if (edit && edit.card) {
-          entriesList.appendChild(edit.card);
+          orderedCards.push(edit.card);
           continue;
+        }
+
+        // Check if we can reuse an existing card
+        const cached = cardCache.get(entry.id);
+        if (cached && !activeEdits.has(entry.id)) {
+          // Skip re-render while a checkbox toggle is in flight to prevent flicker
+          if (pendingCheckboxUpdates.has(entry.id)) {
+            orderedCards.push(cached.card);
+            continue;
+          }
+          const prev = cached.entry;
+          const prevHistLen = (prev.editHistory || []).length;
+          const curHistLen = (entry.editHistory || []).length;
+          // If history length changed, or history content changed, invalidate cache so it rebuilds
+          const histChanged = prevHistLen !== curHistLen ||
+            JSON.stringify(prev.editHistory) !== JSON.stringify(entry.editHistory);
+          if (histChanged) {
+            cardCache.delete(entry.id);
+          } else {
+            // Update in-place if only content or shared changed
+            if (prev.content !== entry.content || prev.shared !== entry.shared) {
+              cached.entry = entry;
+              cached.card.className = 'entry-card' + (entry.shared ? ' shared' : '');
+              cached.contentEl.innerHTML = marked.parse(entry.content);
+              attachCheckboxHandlers(cached.contentEl, entry);
+              const ts = entry.sortTime?.toDate?.() || entry.createdAt?.toDate?.() || new Date();
+              cached.dateText.textContent = ts.toLocaleDateString('en-US', cached.fmtOpts);
+              cached.buildViewMode(entry);
+            }
+            orderedCards.push(cached.card);
+            continue;
+          }
         }
 
         const card = document.createElement('div');
@@ -531,6 +701,7 @@
           versionIdx = versions.length - 1;
           card.classList.remove('history-viewing');
           contentEl.innerHTML = marked.parse(entry.content);
+          attachCheckboxHandlers(contentEl, entry);
           dateText.textContent = ts.toLocaleDateString('en-US', fmtOpts);
         };
 
@@ -559,6 +730,7 @@
         const contentEl = document.createElement('div');
         contentEl.className = 'entry-content';
         contentEl.innerHTML = marked.parse(entry.content);
+        attachCheckboxHandlers(contentEl, entry);
 
         const actions = document.createElement('div');
         actions.className = 'entry-actions';
@@ -701,7 +873,8 @@
         histRight.appendChild(histDeleteSlot);
         histNav.appendChild(histRight);
 
-        function buildViewMode() {
+        function buildViewMode(currentEntry) {
+          if (currentEntry) entry = currentEntry;
           actions.style.display = 'flex';
           actions.innerHTML = '';
           const entryIsOwn = entry.owner === currentUserEmail;
@@ -763,6 +936,7 @@
           versionIdx = versions.length - 1;
           card.classList.remove('history-viewing');
           contentEl.innerHTML = marked.parse(entry.content);
+          attachCheckboxHandlers(contentEl, entry);
           dateText.textContent = ts.toLocaleDateString('en-US', fmtOpts);
         }
 
@@ -797,6 +971,7 @@
           const cancelEdit = () => {
             activeEdits.delete(entry.id);
             contentEl.innerHTML = marked.parse(entry.content);
+            attachCheckboxHandlers(contentEl, entry);
             textarea.replaceWith(contentEl);
             if (returnToHistory) {
               actions.style.display = 'none';
@@ -811,17 +986,23 @@
             const newContent = textarea.value.trim();
             if (newContent && newContent !== entry.content) {
               activeEdits.delete(entry.id);
+              // Restore view mode immediately so the snapshot re-render finds contentEl in the DOM
+              textarea.replaceWith(contentEl);
+              contentEl.innerHTML = marked.parse(newContent);
+              attachCheckboxHandlers(contentEl, { ...entry, content: newContent });
+              buildViewMode();
               await updateDoc(doc(db, 'entries', entry.id), {
                 content: newContent,
-                sortTime: serverTimestamp(),
                 editHistory: arrayUnion({ content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
               });
             } else if (makeCurrentOnSave && newContent === initialValue && newContent !== entry.content) {
-              // Editing a previous version without changes - still rescue it as current
               activeEdits.delete(entry.id);
+              textarea.replaceWith(contentEl);
+              contentEl.innerHTML = marked.parse(newContent);
+              attachCheckboxHandlers(contentEl, { ...entry, content: newContent });
+              buildViewMode();
               await updateDoc(doc(db, 'entries', entry.id), {
                 content: newContent,
-                sortTime: serverTimestamp(),
                 editHistory: arrayUnion({ content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
               });
             } else {
@@ -847,23 +1028,77 @@
               }
             }
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveEdit(); }
+            else if (e.key === 'Enter') { handleListContinuation(e, textarea); }
           });
 
           actions.appendChild(saveBtn);
           actions.appendChild(cancelBtn);
           actions.appendChild(escHint);
+          const cbBtn = makeCheckboxButton(textarea);
+          cbBtn.style.marginLeft = 'auto';
+          actions.appendChild(cbBtn);
         }
 
         card.appendChild(contentEl);
         card.appendChild(actions);
         card.appendChild(histNav);
 
+        // Cache the card for reuse
+        cardCache.set(entry.id, { card, entry, contentEl, dateText, ts, fmtOpts, versions, buildViewMode });
+
         if (activeEdits.has(entry.id)) {
           buildEditMode(activeEdits.get(entry.id).value, false);
         } else {
           buildViewMode();
         }
-        entriesList.appendChild(card);
+        orderedCards.push(card);
+      }
+
+      // Remove cards for entries no longer visible
+      for (const [id] of cardCache) {
+        if (!visibleIds.has(id)) cardCache.delete(id);
+      }
+
+      // FLIP animation: record old positions
+      const oldRects = new Map();
+      for (const card of entriesList.children) {
+        oldRects.set(card, card.getBoundingClientRect());
+      }
+
+      // Reconcile DOM order without removing/re-adding unchanged cards
+      let i = 0;
+      for (const card of orderedCards) {
+        const existing = entriesList.children[i];
+        if (existing !== card) {
+          entriesList.insertBefore(card, existing || null);
+        }
+        i++;
+      }
+      // Remove extra trailing children
+      while (entriesList.children.length > orderedCards.length) {
+        entriesList.removeChild(entriesList.lastChild);
+      }
+
+      // FLIP animation: animate cards that moved, only if both old and new positions are near viewport
+      const vh = window.innerHeight;
+      for (const card of orderedCards) {
+        const oldRect = oldRects.get(card);
+        if (!oldRect) continue;
+        const newRect = card.getBoundingClientRect();
+        const dy = oldRect.top - newRect.top;
+        const nearViewport = oldRect.bottom > -vh && oldRect.top < 2 * vh
+                          && newRect.bottom > -vh && newRect.top < 2 * vh;
+        if (Math.abs(dy) > 1 && nearViewport) {
+          card.style.transform = `translateY(${dy}px)`;
+          card.style.transition = 'none';
+          requestAnimationFrame(() => {
+            card.style.transition = 'transform 0.3s ease';
+            card.style.transform = '';
+            card.addEventListener('transitionend', () => {
+              card.style.transition = '';
+            }, { once: true });
+          });
+        }
       }
     }
 
@@ -891,7 +1126,10 @@
 
     // ── Event listeners ──
     const cancelNewBtn = document.getElementById('cancel-new');
+    const newCheckboxBtn = document.getElementById('new-checkbox-btn');
     const newEscHint = document.getElementById('new-esc-hint');
+    newCheckboxBtn.innerHTML = ICON.checkbox;
+    newCheckboxBtn.addEventListener('click', (e) => { e.preventDefault(); toggleCheckboxMarker(newEntry); });
 
     function closeNewEntry() {
       newEntry.value = '';
@@ -914,6 +1152,8 @@
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         appendEntry();
+      } else if (e.key === 'Enter') {
+        handleListContinuation(e, newEntry);
       }
       if (e.key === 'Escape') {
         e.preventDefault();
