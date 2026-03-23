@@ -1,4 +1,4 @@
-const CACHE_NAME = 'onelist-2026-03-23 11:14';
+const CACHE_NAME = 'onelist-2026-03-23 11:50';
 const SHELL_FILES = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -18,8 +18,8 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-  // Cache-first for Firebase SDK CDN (immutable, versioned)
-  if (e.request.url.includes('gstatic.com/firebasejs')) {
+  // Cache-first for versioned CDN assets (Firebase SDK, DOMPurify, marked)
+  if (e.request.url.includes('gstatic.com/firebasejs') || e.request.url.includes('cdn.jsdelivr.net/npm/')) {
     e.respondWith(
       caches.match(e.request).then(r => r || fetch(e.request).then(resp => {
         const clone = resp.clone();
