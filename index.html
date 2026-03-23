@@ -307,7 +307,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-23 11:14</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-23 11:50</span></h1>
       <div class="header-icons">
         <button id="toggle-view" title="Filter view"></button>
         <button id="toggle-search" title="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><line x1="22" y1="22" x2="15" y2="15"/></svg></button>
@@ -334,6 +334,9 @@
     <div id="status"></div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"
+          integrity="sha384-qSFej5dZNviyoPgYJ5+Xk4bEbX8AYddxAHPuzs1aSgRiXxJ3qmyWNaPsRkpv/+x5"
+          crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"
           integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR"
           crossorigin="anonymous"></script>
@@ -347,6 +350,10 @@
       return originalLink(token);
     };
     marked.setOptions({ breaks: true, gfm: true, renderer });
+    const cleanHtml = (md) => DOMPurify.sanitize(marked.parse(md), {
+      ADD_TAGS: ['input'],
+      ADD_ATTR: ['type', 'checked', 'disabled'],
+    });
 
     const pendingCheckboxUpdates = new Set();
     function attachCheckboxHandlers(contentEl, entry) {
@@ -531,6 +538,36 @@
       bulletList: `<svg ${svgAttrs}><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`,
     };
 
+    // ── Confirm-to-act button helper ──
+    function confirmButton(btn, icon, confirmAction) {
+      let pending = false;
+      let timer = null;
+      const reset = () => {
+        pending = false;
+        clearTimeout(timer);
+        btn.innerHTML = icon;
+        btn.className = btn.dataset.baseClass || '';
+      };
+      const onOutside = (e) => { if (!btn.contains(e.target)) reset(); };
+      btn.addEventListener('click', () => {
+        if (pending) {
+          reset();
+          document.removeEventListener('pointerdown', onOutside, true);
+          confirmAction();
+          return;
+        }
+        pending = true;
+        btn.dataset.baseClass = btn.className;
+        btn.textContent = 'Confirm?';
+        btn.className = 'btn-confirm-delete';
+        document.addEventListener('pointerdown', onOutside, true);
+        timer = setTimeout(() => {
+          document.removeEventListener('pointerdown', onOutside, true);
+          reset();
+        }, 3000);
+      });
+    }
+
     // ── State ──
     let allEntries = [];
     let currentFilter = '';
@@ -672,7 +709,347 @@
     }
 
     // ── Render ──
-    const cardCache = new Map(); // entry.id -> { card, entry, contentEl, dateText, ts, fmtOpts, versions, buildViewMode }
+    const cardCache = new Map(); // entry.id -> { card, entry, contentEl, dateText, ts, fmtOpts, versions, buildViewMode, buildEditMode }
+
+    function buildCard(initialEntry) {
+      let entry = initialEntry;
+      const card = document.createElement('div');
+      card.className = 'entry-card' + (entry.shared ? ' shared' : '');
+
+      const dateEl = document.createElement('div');
+      dateEl.className = 'entry-date';
+      const ts = entry.sortTime?.toDate?.() || entry.createdAt?.toDate?.() || new Date();
+      const fmtOpts = { year: 'numeric', month: 'short', day: 'numeric' };
+      const dateText = document.createElement('span');
+      dateText.textContent = ts.toLocaleDateString('en-US', fmtOpts);
+      dateEl.appendChild(dateText);
+
+      // History state
+      const history = entry.editHistory || [];
+      const hasHistory = history.length > 0;
+      let historyOpen = false;
+      let versions = hasHistory
+        ? [...history.map(h => ({ content: h.content, date: h.editedAt })), { content: entry.content, date: null }]
+        : [{ content: entry.content, date: null }];
+      let versionIdx = versions.length - 1;
+
+      const contentEl = document.createElement('div');
+      contentEl.className = 'entry-content';
+      contentEl.innerHTML = cleanHtml(entry.content);
+      attachCheckboxHandlers(contentEl, entry);
+
+      const actions = document.createElement('div');
+      actions.className = 'entry-actions';
+
+      const histNav = document.createElement('div');
+      histNav.className = 'history-nav';
+      histNav.style.display = 'none';
+
+      const histDeleteSlot = document.createElement('span');
+      histDeleteSlot.style.cssText = 'display:flex;';
+
+      const fmtDate = (iso) => new Date(iso).toLocaleDateString('en-US', fmtOpts);
+
+      const prevBtn = document.createElement('button');
+      prevBtn.textContent = '\u2190';
+      const nextBtn = document.createElement('button');
+      nextBtn.textContent = '\u2192';
+      const label = document.createElement('span');
+
+      const histActions = document.createElement('span');
+      histActions.style.cssText = 'display:flex;gap:8px;';
+
+      const histRight = document.createElement('span');
+      histRight.style.cssText = 'display:flex;gap:8px;align-items:center;margin-left:auto;';
+
+      // ── History actions ──
+      const closeHistory = () => {
+        historyOpen = false;
+        histNav.style.display = 'none';
+        actions.style.display = 'flex';
+        versionIdx = versions.length - 1;
+        card.classList.remove('history-viewing');
+        contentEl.innerHTML = cleanHtml(entry.content);
+        attachCheckboxHandlers(contentEl, entry);
+        dateText.textContent = ts.toLocaleDateString('en-US', fmtOpts);
+      };
+
+      function buildHistoryActions() {
+        histActions.innerHTML = '';
+        const isCurrent = versionIdx === versions.length - 1;
+        const entryIsOwn = entry.owner === currentUserEmail;
+
+        if (!isCurrent) {
+          const rescueVerBtn = document.createElement('button');
+          rescueVerBtn.className = 'btn-rescue';
+          rescueVerBtn.innerHTML = ICON.bump;
+          rescueVerBtn.title = 'Bump';
+          rescueVerBtn.addEventListener('click', async () => {
+            const rescuedContent = versions[versionIdx].content;
+            const newHistory = history.map((h, i) => i === versionIdx
+              ? { content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() }
+              : h
+            );
+            await updateDoc(doc(db, 'entries', entry.id), {
+              content: rescuedContent,
+              sortTime: serverTimestamp(),
+              editHistory: newHistory
+            });
+          }, { once: true });
+          histActions.appendChild(rescueVerBtn);
+        }
+
+        const editVerBtn = document.createElement('button');
+        editVerBtn.className = 'btn-edit';
+        editVerBtn.innerHTML = ICON.edit;
+        editVerBtn.title = 'Edit';
+        editVerBtn.addEventListener('click', () => {
+          histNav.style.display = 'none';
+          activeEdits.set(entry.id, { value: versions[versionIdx].content, card });
+          buildEditMode(versions[versionIdx].content, !isCurrent, true);
+        }, { once: true });
+        histActions.appendChild(editVerBtn);
+
+        histDeleteSlot.innerHTML = '';
+        if (entryIsOwn) {
+          if (!isCurrent) {
+            const delVerBtn = document.createElement('button');
+            delVerBtn.innerHTML = ICON.trash;
+            delVerBtn.title = 'Delete version';
+            confirmButton(delVerBtn, ICON.trash, async () => {
+              const newHistory = history.filter((_, i) => i !== versionIdx);
+              await updateDoc(doc(db, 'entries', entry.id), { editHistory: newHistory });
+            });
+            histDeleteSlot.appendChild(delVerBtn);
+          } else {
+            const clearBtn = document.createElement('button');
+            clearBtn.innerHTML = ICON.clearHistory;
+            clearBtn.title = 'Delete all history';
+            confirmButton(clearBtn, ICON.clearHistory, async () => {
+              await updateDoc(doc(db, 'entries', entry.id), { editHistory: [] });
+            });
+            histDeleteSlot.appendChild(clearBtn);
+          }
+        }
+      }
+
+      const updateHistoryView = () => {
+        if (!historyOpen) return;
+        const isCurrent = versionIdx === versions.length - 1;
+        contentEl.innerHTML = cleanHtml(versions[versionIdx].content);
+        prevBtn.disabled = versionIdx === 0;
+        nextBtn.disabled = isCurrent;
+        label.textContent = `${versionIdx + 1}/${versions.length}`;
+        dateText.textContent = isCurrent
+          ? ts.toLocaleDateString('en-US', fmtOpts)
+          : fmtDate(versions[versionIdx].date);
+        card.classList.toggle('history-viewing', !isCurrent);
+        buildHistoryActions();
+      };
+
+      // Version icon — shown next to date if entry has history
+      if (hasHistory) {
+        const toggleHistory = () => {
+          if (historyOpen) { closeHistory(); return; }
+          historyOpen = true;
+          histNav.style.display = 'flex';
+          actions.style.display = 'none';
+          updateHistoryView();
+        };
+        const versionIcon = document.createElement('span');
+        versionIcon.className = 'version-icon';
+        versionIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>';
+        versionIcon.title = `${versions.length} versions`;
+        dateEl.style.cursor = 'pointer';
+        dateEl.addEventListener('click', toggleHistory);
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && historyOpen) { e.preventDefault(); closeHistory(); }
+        }, { signal: renderAbort.signal });
+        dateEl.insertBefore(document.createTextNode(' '), dateEl.firstChild);
+        dateEl.insertBefore(versionIcon, dateEl.firstChild);
+      }
+
+      prevBtn.addEventListener('click', () => { if (versionIdx > 0) { versionIdx--; updateHistoryView(); } });
+      nextBtn.addEventListener('click', () => { if (versionIdx < versions.length - 1) { versionIdx++; updateHistoryView(); } });
+
+      histNav.appendChild(histActions);
+      histRight.appendChild(prevBtn);
+      histRight.appendChild(label);
+      histRight.appendChild(nextBtn);
+      if (hasHistory) {
+        const closeHistBtn = document.createElement('button');
+        closeHistBtn.textContent = '✕';
+        closeHistBtn.title = 'Close history';
+        closeHistBtn.addEventListener('click', closeHistory);
+        histRight.appendChild(closeHistBtn);
+      }
+      histRight.appendChild(histDeleteSlot);
+      histNav.appendChild(histRight);
+
+      // ── View mode ──
+      function buildViewMode(updatedEntry) {
+        if (updatedEntry) entry = updatedEntry;
+        actions.style.display = 'flex';
+        actions.innerHTML = '';
+        const entryIsOwn = entry.owner === currentUserEmail;
+
+        const bumpBtn = document.createElement('button');
+        bumpBtn.className = 'btn-rescue';
+        bumpBtn.innerHTML = ICON.bump;
+        bumpBtn.title = 'Bump';
+        bumpBtn.addEventListener('click', () => rescueEntry(entry.id));
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn-edit';
+        editBtn.innerHTML = ICON.edit;
+        editBtn.title = 'Edit';
+        editBtn.addEventListener('click', () => {
+          activeEdits.set(entry.id, { value: entry.content, card });
+          buildEditMode(entry.content, false);
+        }, { once: true });
+
+        actions.appendChild(bumpBtn);
+        actions.appendChild(editBtn);
+
+        if (entryIsOwn) {
+          const shareBtn = document.createElement('button');
+          shareBtn.innerHTML = entry.shared ? ICON.share : ICON.unshare;
+          shareBtn.title = entry.shared ? 'Unshare' : 'Share';
+          if (entry.shared) shareBtn.style.cssText = 'color:#7bae7f;border-color:#7bae7f';
+          shareBtn.addEventListener('click', async () => {
+            await updateDoc(doc(db, 'entries', entry.id), { shared: !entry.shared });
+          });
+          actions.appendChild(shareBtn);
+        } else {
+          const ownerLabel = document.createElement('span');
+          ownerLabel.className = 'entry-date';
+          ownerLabel.textContent = (entry.owner || '').split('@')[0];
+          actions.appendChild(ownerLabel);
+        }
+
+        actions.appendChild(dateEl);
+
+        if (entryIsOwn) {
+          const deleteBtn = document.createElement('button');
+          deleteBtn.className = 'btn-delete';
+          deleteBtn.innerHTML = ICON.trash;
+          deleteBtn.title = 'Delete';
+          confirmButton(deleteBtn, ICON.trash, () => removeEntry(entry.id));
+          actions.appendChild(deleteBtn);
+        }
+
+        versionIdx = versions.length - 1;
+        card.classList.remove('history-viewing');
+        contentEl.innerHTML = cleanHtml(entry.content);
+        attachCheckboxHandlers(contentEl, entry);
+        dateText.textContent = ts.toLocaleDateString('en-US', fmtOpts);
+      }
+
+      // ── Edit mode ──
+      function buildEditMode(initialValue, makeCurrentOnSave, returnToHistory) {
+        const textarea = document.createElement('textarea');
+        textarea.className = 'edit-textarea';
+        textarea.value = initialValue;
+        const currentContent = card.querySelector('.entry-content, .edit-textarea');
+        if (currentContent) currentContent.replaceWith(textarea);
+        textarea.style.height = 'auto';
+        textarea.style.height = textarea.scrollHeight + 'px';
+        textarea.addEventListener('input', () => {
+          textarea.style.height = 'auto';
+          textarea.style.height = textarea.scrollHeight + 'px';
+          activeEdits.set(entry.id, { value: textarea.value, card });
+        });
+        textarea.focus();
+
+        actions.style.display = 'flex';
+        actions.innerHTML = '';
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'btn-edit';
+        saveBtn.textContent = 'Save';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn-delete';
+        cancelBtn.textContent = 'Cancel';
+        const escHint = document.createElement('span');
+        escHint.className = 'esc-hint';
+
+        const cancelEdit = () => {
+          activeEdits.delete(entry.id);
+          contentEl.innerHTML = cleanHtml(entry.content);
+          attachCheckboxHandlers(contentEl, entry);
+          textarea.replaceWith(contentEl);
+          if (returnToHistory) {
+            actions.style.display = 'none';
+            histNav.style.display = 'flex';
+            updateHistoryView();
+          } else {
+            buildViewMode();
+          }
+        };
+
+        const saveEdit = async () => {
+          const newContent = textarea.value.trim();
+          if (newContent && newContent !== entry.content) {
+            activeEdits.delete(entry.id);
+            textarea.replaceWith(contentEl);
+            contentEl.innerHTML = cleanHtml(newContent);
+            attachCheckboxHandlers(contentEl, { ...entry, content: newContent });
+            buildViewMode();
+            await updateDoc(doc(db, 'entries', entry.id), {
+              content: newContent,
+              editHistory: arrayUnion({ content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
+            });
+          } else if (makeCurrentOnSave && newContent === initialValue && newContent !== entry.content) {
+            activeEdits.delete(entry.id);
+            textarea.replaceWith(contentEl);
+            contentEl.innerHTML = cleanHtml(newContent);
+            attachCheckboxHandlers(contentEl, { ...entry, content: newContent });
+            buildViewMode();
+            await updateDoc(doc(db, 'entries', entry.id), {
+              content: newContent,
+              editHistory: arrayUnion({ content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
+            });
+          } else {
+            cancelEdit();
+          }
+        };
+
+        saveBtn.addEventListener('click', saveEdit);
+        cancelBtn.addEventListener('click', cancelEdit);
+
+        let editEscPending = false;
+        textarea.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            if (textarea.value.trim() === entry.content) {
+              cancelEdit();
+            } else if (editEscPending) {
+              cancelEdit();
+            } else {
+              editEscPending = true;
+              escHint.textContent = 'Esc again to discard';
+              setTimeout(() => { editEscPending = false; escHint.textContent = ''; }, 3000);
+            }
+          }
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveEdit(); }
+          else if (e.key === 'Enter') { handleListContinuation(e, textarea); }
+        });
+
+        actions.appendChild(saveBtn);
+        actions.appendChild(cancelBtn);
+        actions.appendChild(escHint);
+        const blBtn = makeBulletButton(textarea);
+        blBtn.style.marginLeft = 'auto';
+        actions.appendChild(blBtn);
+        const cbBtn = makeCheckboxButton(textarea);
+        actions.appendChild(cbBtn);
+      }
+
+      card.appendChild(contentEl);
+      card.appendChild(actions);
+      card.appendChild(histNav);
+
+      return { card, entry, contentEl, dateText, ts, fmtOpts, versions, buildViewMode, buildEditMode };
+    }
 
     function renderEntries() {
       if (renderAbort) renderAbort.abort();
@@ -707,11 +1084,13 @@
             continue;
           }
           const prev = cached.entry;
-          const prevHistLen = (prev.editHistory || []).length;
-          const curHistLen = (entry.editHistory || []).length;
-          // If history length changed, or history content changed, invalidate cache so it rebuilds
-          const histChanged = prevHistLen !== curHistLen ||
-            JSON.stringify(prev.editHistory) !== JSON.stringify(entry.editHistory);
+          const prevHist = prev.editHistory || [];
+          const curHist = entry.editHistory || [];
+          const lastPrev = prevHist[prevHist.length - 1];
+          const lastCur = curHist[curHist.length - 1];
+          const histChanged = prevHist.length !== curHist.length ||
+            lastPrev?.content !== lastCur?.content ||
+            lastPrev?.editedAt !== lastCur?.editedAt;
           if (histChanged) {
             cardCache.delete(entry.id);
           } else {
@@ -719,7 +1098,7 @@
             if (prev.content !== entry.content || prev.shared !== entry.shared) {
               cached.entry = entry;
               cached.card.className = 'entry-card' + (entry.shared ? ' shared' : '');
-              cached.contentEl.innerHTML = marked.parse(entry.content);
+              cached.contentEl.innerHTML = cleanHtml(entry.content);
               attachCheckboxHandlers(cached.contentEl, entry);
               const ts = entry.sortTime?.toDate?.() || entry.createdAt?.toDate?.() || new Date();
               cached.dateText.textContent = ts.toLocaleDateString('en-US', cached.fmtOpts);
@@ -730,387 +1109,15 @@
           }
         }
 
-        const card = document.createElement('div');
-        card.className = 'entry-card' + (entry.shared ? ' shared' : '');
-
-        const dateEl = document.createElement('div');
-        dateEl.className = 'entry-date';
-        const ts = entry.sortTime?.toDate?.() || entry.createdAt?.toDate?.() || new Date();
-        const fmtOpts = { year: 'numeric', month: 'short', day: 'numeric' };
-        const dateText = document.createElement('span');
-        dateText.textContent = ts.toLocaleDateString('en-US', fmtOpts);
-        dateEl.appendChild(dateText);
-
-        // History state
-        const history = entry.editHistory || [];
-        const hasHistory = history.length > 0;
-        let historyOpen = false;
-        // versions: [oldest edit, ..., newest edit, current]
-        let versions = hasHistory
-          ? [...history.map(h => ({ content: h.content, date: h.editedAt })), { content: entry.content, date: null }]
-          : [{ content: entry.content, date: null }];
-        let versionIdx = versions.length - 1;
-
-        const closeHistory = () => {
-          historyOpen = false;
-          histNav.style.display = 'none';
-          actions.style.display = 'flex';
-          versionIdx = versions.length - 1;
-          card.classList.remove('history-viewing');
-          contentEl.innerHTML = marked.parse(entry.content);
-          attachCheckboxHandlers(contentEl, entry);
-          dateText.textContent = ts.toLocaleDateString('en-US', fmtOpts);
-        };
-
-        // Version icon (clock icon like Google Docs) - shown next to date if entry has history
-        if (hasHistory) {
-          const toggleHistory = () => {
-            if (historyOpen) { closeHistory(); return; }
-            historyOpen = true;
-            histNav.style.display = 'flex';
-            actions.style.display = 'none';
-            updateHistoryView();
-          };
-          const versionIcon = document.createElement('span');
-          versionIcon.className = 'version-icon';
-          versionIcon.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>';
-          versionIcon.title = `${versions.length} versions`;
-          dateEl.style.cursor = 'pointer';
-          dateEl.addEventListener('click', toggleHistory);
-          document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && historyOpen) { e.preventDefault(); closeHistory(); }
-          }, { signal: renderAbort.signal });
-          dateEl.insertBefore(document.createTextNode(' '), dateEl.firstChild);
-          dateEl.insertBefore(versionIcon, dateEl.firstChild);
-        }
-
-        const contentEl = document.createElement('div');
-        contentEl.className = 'entry-content';
-        contentEl.innerHTML = marked.parse(entry.content);
-        attachCheckboxHandlers(contentEl, entry);
-
-        const actions = document.createElement('div');
-        actions.className = 'entry-actions';
-
-        // History navigation (hidden by default, placed after actions)
-        const histNav = document.createElement('div');
-        histNav.className = 'history-nav';
-        histNav.style.display = 'none';
-
-        const fmtDate = (iso) => new Date(iso).toLocaleDateString('en-US', fmtOpts);
-
-        const prevBtn = document.createElement('button');
-        prevBtn.textContent = '\u2190';
-        const nextBtn = document.createElement('button');
-        nextBtn.textContent = '\u2192';
-        const label = document.createElement('span');
-
-        const updateHistoryView = () => {
-          if (!historyOpen) return;
-          const isCurrent = versionIdx === versions.length - 1;
-          contentEl.innerHTML = marked.parse(versions[versionIdx].content);
-          prevBtn.disabled = versionIdx === 0;
-          nextBtn.disabled = isCurrent;
-          const counter = `${versionIdx + 1}/${versions.length}`;
-          label.textContent = counter;
-          dateText.textContent = isCurrent
-            ? ts.toLocaleDateString('en-US', fmtOpts)
-            : fmtDate(versions[versionIdx].date);
-          card.classList.toggle('history-viewing', !isCurrent);
-          buildHistoryActions();
-        };
-
-        prevBtn.addEventListener('click', () => { if (versionIdx > 0) { versionIdx--; updateHistoryView(); } });
-        nextBtn.addEventListener('click', () => { if (versionIdx < versions.length - 1) { versionIdx++; updateHistoryView(); } });
-
-        // Build version-specific action buttons inside history nav
-        const histActions = document.createElement('span');
-        histActions.style.cssText = 'display:flex;gap:8px;';
-
-        const histRight = document.createElement('span');
-        histRight.style.cssText = 'display:flex;gap:8px;align-items:center;margin-left:auto;';
-
-        function buildHistoryActions() {
-          histActions.innerHTML = '';
-          const isCurrent = versionIdx === versions.length - 1;
-          const entryIsOwn = entry.owner === currentUserEmail;
-
-          // Bump button (only for non-current versions)
-          if (!isCurrent) {
-            const rescueVerBtn = document.createElement('button');
-            rescueVerBtn.className = 'btn-rescue';
-            rescueVerBtn.innerHTML = ICON.bump;
-            rescueVerBtn.title = 'Bump';
-            rescueVerBtn.addEventListener('click', async () => {
-              const rescuedContent = versions[versionIdx].content;
-              const newHistory = history.map((h, i) => i === versionIdx
-                ? { content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() }
-                : h
-              );
-              await updateDoc(doc(db, 'entries', entry.id), {
-                content: rescuedContent,
-                sortTime: serverTimestamp(),
-                editHistory: newHistory
-              });
-            }, { once: true });
-            histActions.appendChild(rescueVerBtn);
-          }
-
-          // Edit button (for any version)
-          const editVerBtn = document.createElement('button');
-          editVerBtn.className = 'btn-edit';
-          editVerBtn.innerHTML = ICON.edit;
-          editVerBtn.title = 'Edit';
-          editVerBtn.addEventListener('click', () => {
-            histNav.style.display = 'none';
-            activeEdits.set(entry.id, { value: versions[versionIdx].content, card });
-            buildEditMode(versions[versionIdx].content, !isCurrent, true);
-          }, { once: true });
-          histActions.appendChild(editVerBtn);
-
-          // Delete button on the right — swaps between delete version and delete all history
-          histDeleteSlot.innerHTML = '';
-          if (entryIsOwn) {
-            if (!isCurrent) {
-              // Delete this version
-              const delVerBtn = document.createElement('button');
-              delVerBtn.innerHTML = ICON.trash;
-              delVerBtn.title = 'Delete version';
-              delVerBtn.addEventListener('click', () => {
-                delVerBtn.textContent = 'Confirm?';
-                delVerBtn.className = 'btn-confirm-delete';
-                delVerBtn.addEventListener('click', async () => {
-                  const newHistory = history.filter((_, i) => i !== versionIdx);
-                  await updateDoc(doc(db, 'entries', entry.id), { editHistory: newHistory });
-                }, { once: true });
-                setTimeout(() => {
-                  delVerBtn.innerHTML = ICON.trash;
-                  delVerBtn.className = '';
-                }, 3000);
-              }, { once: true });
-              histDeleteSlot.appendChild(delVerBtn);
-            } else {
-              // Delete all history
-              const clearBtn = document.createElement('button');
-              clearBtn.innerHTML = ICON.clearHistory;
-              clearBtn.title = 'Delete all history';
-              clearBtn.addEventListener('click', () => {
-                clearBtn.textContent = 'Confirm?';
-                clearBtn.className = 'btn-confirm-delete';
-                clearBtn.addEventListener('click', async () => {
-                  await updateDoc(doc(db, 'entries', entry.id), { editHistory: [] });
-                }, { once: true });
-                setTimeout(() => {
-                  clearBtn.innerHTML = ICON.clearHistory;
-                  clearBtn.className = '';
-                }, 3000);
-              }, { once: true });
-              histDeleteSlot.appendChild(clearBtn);
-            }
-          }
-
-        }
-
-        // Layout: [Bump Edit] ... [← 3/4 → ✕] [Delete]
-        histNav.appendChild(histActions);
-
-        const histDeleteSlot = document.createElement('span');
-        histDeleteSlot.style.cssText = 'display:flex;';
-
-        histRight.appendChild(prevBtn);
-        histRight.appendChild(label);
-        histRight.appendChild(nextBtn);
-        if (hasHistory) {
-          const closeHistBtn = document.createElement('button');
-          closeHistBtn.textContent = '✕';
-          closeHistBtn.title = 'Close history';
-          closeHistBtn.addEventListener('click', closeHistory);
-          histRight.appendChild(closeHistBtn);
-        }
-        histRight.appendChild(histDeleteSlot);
-        histNav.appendChild(histRight);
-
-        function buildViewMode(currentEntry) {
-          if (currentEntry) entry = currentEntry;
-          actions.style.display = 'flex';
-          actions.innerHTML = '';
-          const entryIsOwn = entry.owner === currentUserEmail;
-
-          const bumpBtn = document.createElement('button');
-          bumpBtn.className = 'btn-rescue';
-          bumpBtn.innerHTML = ICON.bump;
-          bumpBtn.title = 'Bump';
-          bumpBtn.addEventListener('click', () => rescueEntry(entry.id));
-
-          const editBtn = document.createElement('button');
-          editBtn.className = 'btn-edit';
-          editBtn.innerHTML = ICON.edit;
-          editBtn.title = 'Edit';
-          editBtn.addEventListener('click', () => {
-            activeEdits.set(entry.id, { value: entry.content, card });
-            buildEditMode(entry.content, false);
-          }, { once: true });
-
-          actions.appendChild(bumpBtn);
-          actions.appendChild(editBtn);
-
-          if (entryIsOwn) {
-            const shareBtn = document.createElement('button');
-            shareBtn.innerHTML = entry.shared ? ICON.share : ICON.unshare;
-            shareBtn.title = entry.shared ? 'Unshare' : 'Share';
-            if (entry.shared) shareBtn.style.cssText = 'color:#7bae7f;border-color:#7bae7f';
-            shareBtn.addEventListener('click', async () => {
-              await updateDoc(doc(db, 'entries', entry.id), { shared: !entry.shared });
-            });
-            actions.appendChild(shareBtn);
-          } else {
-            const ownerLabel = document.createElement('span');
-            ownerLabel.className = 'entry-date';
-            ownerLabel.textContent = (entry.owner || '').split('@')[0];
-            actions.appendChild(ownerLabel);
-          }
-
-          actions.appendChild(dateEl);
-
-          if (entryIsOwn) {
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'btn-delete';
-            deleteBtn.innerHTML = ICON.trash;
-            deleteBtn.title = 'Delete';
-            deleteBtn.addEventListener('click', () => {
-              deleteBtn.textContent = 'Confirm?';
-              deleteBtn.className = 'btn-confirm-delete';
-              deleteBtn.addEventListener('click', () => removeEntry(entry.id), { once: true });
-              setTimeout(() => {
-                deleteBtn.innerHTML = ICON.trash;
-                deleteBtn.className = 'btn-delete';
-              }, 3000);
-            }, { once: true });
-            actions.appendChild(deleteBtn);
-          }
-
-          // Reset history view to current
-          versionIdx = versions.length - 1;
-          card.classList.remove('history-viewing');
-          contentEl.innerHTML = marked.parse(entry.content);
-          attachCheckboxHandlers(contentEl, entry);
-          dateText.textContent = ts.toLocaleDateString('en-US', fmtOpts);
-        }
-
-        function buildEditMode(initialValue, makeCurrentOnSave, returnToHistory) {
-          // Swap content for textarea
-          const textarea = document.createElement('textarea');
-          textarea.className = 'edit-textarea';
-          textarea.value = initialValue;
-          const currentContent = card.querySelector('.entry-content, .edit-textarea');
-          if (currentContent) currentContent.replaceWith(textarea);
-          textarea.style.height = 'auto';
-          textarea.style.height = textarea.scrollHeight + 'px';
-          textarea.addEventListener('input', () => {
-            textarea.style.height = 'auto';
-            textarea.style.height = textarea.scrollHeight + 'px';
-            activeEdits.set(entry.id, { value: textarea.value, card });
-          });
-          textarea.focus();
-
-          // Replace action buttons with Save + Cancel
-          actions.style.display = 'flex';
-          actions.innerHTML = '';
-          const saveBtn = document.createElement('button');
-          saveBtn.className = 'btn-edit';
-          saveBtn.textContent = 'Save';
-          const cancelBtn = document.createElement('button');
-          cancelBtn.className = 'btn-delete';
-          cancelBtn.textContent = 'Cancel';
-          const escHint = document.createElement('span');
-          escHint.className = 'esc-hint';
-
-          const cancelEdit = () => {
-            activeEdits.delete(entry.id);
-            contentEl.innerHTML = marked.parse(entry.content);
-            attachCheckboxHandlers(contentEl, entry);
-            textarea.replaceWith(contentEl);
-            if (returnToHistory) {
-              actions.style.display = 'none';
-              histNav.style.display = 'flex';
-              updateHistoryView();
-            } else {
-              buildViewMode();
-            }
-          };
-
-          const saveEdit = async () => {
-            const newContent = textarea.value.trim();
-            if (newContent && newContent !== entry.content) {
-              activeEdits.delete(entry.id);
-              // Restore view mode immediately so the snapshot re-render finds contentEl in the DOM
-              textarea.replaceWith(contentEl);
-              contentEl.innerHTML = marked.parse(newContent);
-              attachCheckboxHandlers(contentEl, { ...entry, content: newContent });
-              buildViewMode();
-              await updateDoc(doc(db, 'entries', entry.id), {
-                content: newContent,
-                editHistory: arrayUnion({ content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
-              });
-            } else if (makeCurrentOnSave && newContent === initialValue && newContent !== entry.content) {
-              activeEdits.delete(entry.id);
-              textarea.replaceWith(contentEl);
-              contentEl.innerHTML = marked.parse(newContent);
-              attachCheckboxHandlers(contentEl, { ...entry, content: newContent });
-              buildViewMode();
-              await updateDoc(doc(db, 'entries', entry.id), {
-                content: newContent,
-                editHistory: arrayUnion({ content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
-              });
-            } else {
-              cancelEdit();
-            }
-          };
-
-          saveBtn.addEventListener('click', saveEdit);
-          cancelBtn.addEventListener('click', cancelEdit);
-
-          let editEscPending = false;
-          textarea.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              if (textarea.value.trim() === entry.content) {
-                cancelEdit();
-              } else if (editEscPending) {
-                cancelEdit();
-              } else {
-                editEscPending = true;
-                escHint.textContent = 'Esc again to discard';
-                setTimeout(() => { editEscPending = false; escHint.textContent = ''; }, 3000);
-              }
-            }
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveEdit(); }
-            else if (e.key === 'Enter') { handleListContinuation(e, textarea); }
-          });
-
-          actions.appendChild(saveBtn);
-          actions.appendChild(cancelBtn);
-          actions.appendChild(escHint);
-          const blBtn = makeBulletButton(textarea);
-          blBtn.style.marginLeft = 'auto';
-          actions.appendChild(blBtn);
-          const cbBtn = makeCheckboxButton(textarea);
-          actions.appendChild(cbBtn);
-        }
-
-        card.appendChild(contentEl);
-        card.appendChild(actions);
-        card.appendChild(histNav);
-
-        // Cache the card for reuse
-        cardCache.set(entry.id, { card, entry, contentEl, dateText, ts, fmtOpts, versions, buildViewMode });
+        const result = buildCard(entry);
+        cardCache.set(entry.id, result);
 
         if (activeEdits.has(entry.id)) {
-          buildEditMode(activeEdits.get(entry.id).value, false);
+          result.buildEditMode(activeEdits.get(entry.id).value, false);
         } else {
-          buildViewMode();
+          result.buildViewMode();
         }
-        orderedCards.push(card);
+        orderedCards.push(result.card);
       }
 
       // Remove cards for entries no longer visible
@@ -1230,9 +1237,11 @@
       }
     });
 
+    let searchTimer;
     searchInput.addEventListener('input', (e) => {
       currentFilter = e.target.value;
-      renderEntries();
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(renderEntries, 150);
     });
 
     searchInput.addEventListener('keydown', (e) => {
