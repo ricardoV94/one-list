@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>G1 Josefin Sage - Alignment Variations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@700&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; padding: 40px 20px; }
+  h1 { text-align: center; margin-bottom: 8px; color: #222; }
+  p.subtitle { text-align: center; color: #666; margin-bottom: 32px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 32px; max-width: 1200px; margin: 0 auto; }
+  .card {
+    background: #fff; border-radius: 16px; padding: 32px; text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08); transition: transform 0.15s;
+  }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+  .card h3 { margin: 16px 0 4px; color: #333; font-size: 15px; }
+  .card p { color: #888; font-size: 13px; }
+  .previews { display: flex; align-items: center; justify-content: center; gap: 16px; }
+  .previews svg { border-radius: 20%; }
+  .previews .small { width: 64px; height: 64px; border-radius: 14px; }
+  .previews .tiny { width: 40px; height: 40px; border-radius: 10px; }
+  .ref { display: inline-block; background: #e8f0e8; color: #5a8a5e; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 8px; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<h1>G1 Josefin Sage - Alignment Tuning</h1>
+<p class="subtitle">Shown at 128px, 64px, and 40px</p>
+
+<div class="grid">
+
+  <!-- Reference: current G1 position -->
+  <div class="card">
+    <span class="ref">BASELINE</span>
+    <div class="previews">
+      <svg width="128" height="128" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="290" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="190" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="230" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="270" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="small" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="290" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="190" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="230" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="270" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="tiny" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="290" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="190" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="230" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="270" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+    </div>
+    <h3>Baseline (x=180, y=290)</h3>
+    <p>Current position - "1" sits low</p>
+  </div>
+
+  <!-- A: True center -->
+  <div class="card">
+    <div class="previews">
+      <svg width="128" height="128" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="256" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="170" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="210" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="250" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="small" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="256" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="170" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="210" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="250" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="tiny" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="256" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="170" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="210" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="250" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+    </div>
+    <h3>A: True Center (y=256)</h3>
+    <p>Everything vertically centered</p>
+  </div>
+
+  <!-- B: Optical center -->
+  <div class="card">
+    <div class="previews">
+      <svg width="128" height="128" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="240" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="155" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="195" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="235" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="small" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="240" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="155" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="195" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="235" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="tiny" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="240" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="155" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="195" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="235" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+    </div>
+    <h3>B: Optical Center (y=240)</h3>
+    <p>Slightly above true center</p>
+  </div>
+
+  <!-- C: Nudge 1 right, lines have more room -->
+  <div class="card">
+    <div class="previews">
+      <svg width="128" height="128" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="200" y="250" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="310" y="165" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="310" y="205" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="310" y="245" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="small" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="200" y="250" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="310" y="165" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="310" y="205" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="310" y="245" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="tiny" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="200" y="250" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="310" y="165" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="310" y="205" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="310" y="245" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+    </div>
+    <h3>C: Nudged Right (x=200, y=250)</h3>
+    <p>"1" closer to center, more line space</p>
+  </div>
+
+  <!-- D: Wide split, 1 far left -->
+  <div class="card">
+    <div class="previews">
+      <svg width="128" height="128" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="160" y="250" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="280" y="165" width="120" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="280" y="205" width="96" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="280" y="245" width="108" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="small" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="160" y="250" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="280" y="165" width="120" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="280" y="205" width="96" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="280" y="245" width="108" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="tiny" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="160" y="250" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="280" y="165" width="120" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="280" y="205" width="96" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="280" y="245" width="108" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+    </div>
+    <h3>D: Wide Split (x=160, y=250)</h3>
+    <p>"1" far left, longer lines</p>
+  </div>
+
+  <!-- E: Smaller font, balanced -->
+  <div class="card">
+    <div class="previews">
+      <svg width="128" height="128" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="185" y="248" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="240" font-weight="800">1</text>
+        <rect x="290" y="168" width="110" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="290" y="208" width="88" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="290" y="248" width="100" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="small" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="185" y="248" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="240" font-weight="800">1</text>
+        <rect x="290" y="168" width="110" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="290" y="208" width="88" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="290" y="248" width="100" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="tiny" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="185" y="248" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="240" font-weight="800">1</text>
+        <rect x="290" y="168" width="110" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="290" y="208" width="88" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="290" y="248" width="100" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+    </div>
+    <h3>E: Smaller "1" (240px, y=248)</h3>
+    <p>Downsized for balance</p>
+  </div>
+
+  <!-- F: Lines lower half -->
+  <div class="card">
+    <div class="previews">
+      <svg width="128" height="128" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="250" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="220" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="260" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="300" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="small" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="250" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="220" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="260" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="300" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="tiny" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="250" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="220" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="260" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="300" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+    </div>
+    <h3>F: Lines Lower (y=250, lines 220+)</h3>
+    <p>"1" raised, lines bottom-right</p>
+  </div>
+
+  <!-- G: Lines top-aligned -->
+  <div class="card">
+    <div class="previews">
+      <svg width="128" height="128" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="250" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="130" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="170" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="210" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="small" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="250" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="130" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="170" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="210" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="tiny" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="250" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="280" font-weight="800">1</text>
+        <rect x="300" y="130" width="100" height="16" rx="8" fill="rgba(255,255,255,0.5)"/>
+        <rect x="300" y="170" width="80" height="16" rx="8" fill="rgba(255,255,255,0.35)"/>
+        <rect x="300" y="210" width="90" height="16" rx="8" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+    </div>
+    <h3>G: Lines High (y=250, lines 130+)</h3>
+    <p>"1" raised, lines top-right corner</p>
+  </div>
+
+  <!-- H: Centered lines on midline, thicker -->
+  <div class="card">
+    <div class="previews">
+      <svg width="128" height="128" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="256" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="260" font-weight="800">1</text>
+        <rect x="296" y="196" width="108" height="18" rx="9" fill="rgba(255,255,255,0.5)"/>
+        <rect x="296" y="240" width="86" height="18" rx="9" fill="rgba(255,255,255,0.35)"/>
+        <rect x="296" y="284" width="98" height="18" rx="9" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="small" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="256" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="260" font-weight="800">1</text>
+        <rect x="296" y="196" width="108" height="18" rx="9" fill="rgba(255,255,255,0.5)"/>
+        <rect x="296" y="240" width="86" height="18" rx="9" fill="rgba(255,255,255,0.35)"/>
+        <rect x="296" y="284" width="98" height="18" rx="9" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+      <svg class="tiny" viewBox="0 0 512 512">
+        <rect width="512" height="512" rx="96" fill="#7bae7f"/>
+        <text x="180" y="256" text-anchor="middle" dominant-baseline="central" fill="#fff" font-family="'Josefin Sans', sans-serif" font-size="260" font-weight="800">1</text>
+        <rect x="296" y="196" width="108" height="18" rx="9" fill="rgba(255,255,255,0.5)"/>
+        <rect x="296" y="240" width="86" height="18" rx="9" fill="rgba(255,255,255,0.35)"/>
+        <rect x="296" y="284" width="98" height="18" rx="9" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+    </div>
+    <h3>H: Centered, Thicker Lines</h3>
+    <p>Lines centered on "1" midline, wider bars</p>
+  </div>
+
+</div>
+
+</body>
+</html>
