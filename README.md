@@ -20,7 +20,7 @@ Built as a single-page PWA with Firebase — no build step, no dependencies beyo
 
 - **Frontend:** Single `index.html` (HTML + CSS + JS, no framework)
 - **Backend:** Firebase (Auth, Firestore, Hosting)
-- **Auth:** Google sign-in, restricted to an allowlist in Firestore (`config/allowedUsers`)
+- **Auth:** Google sign-in, restricted to an allowlist in Firestore (`config/allowedUsers`); fails closed if allowlist is unreachable
 - **Markdown:** [marked](https://github.com/markedjs/marked) via CDN with SRI, sanitized with [DOMPurify](https://github.com/cure53/DOMPurify)
 
 ## Setup

@@ -645,7 +645,9 @@
             return;
           }
         } catch (e) {
-          // If config doc doesn't exist yet, allow access (initial setup)
+          await signOut(auth);
+          alert('Unable to verify access. Contact an admin to grant access.');
+          return;
         }
         authSection.style.display = 'none';
         appSection.style.display = 'block';
@@ -696,16 +698,22 @@
       });
     }
 
+    let renderQueued = false;
     function mergeAndRender() {
-      const map = new Map();
-      for (const e of ownEntries) map.set(e.id, e);
-      for (const e of sharedEntries) map.set(e.id, e);
-      allEntries = [...map.values()].sort((a, b) => {
-        const ta = a.sortTime?.toMillis?.() || 0;
-        const tb = b.sortTime?.toMillis?.() || 0;
-        return tb - ta;
+      if (renderQueued) return;
+      renderQueued = true;
+      queueMicrotask(() => {
+        renderQueued = false;
+        const map = new Map();
+        for (const e of ownEntries) map.set(e.id, e);
+        for (const e of sharedEntries) map.set(e.id, e);
+        allEntries = [...map.values()].sort((a, b) => {
+          const ta = a.sortTime?.toMillis?.() || 0;
+          const tb = b.sortTime?.toMillis?.() || 0;
+          return tb - ta;
+        });
+        renderEntries();
       });
-      renderEntries();
     }
 
     // ── Render ──
@@ -988,17 +996,9 @@
 
         const saveEdit = async () => {
           const newContent = textarea.value.trim();
-          if (newContent && newContent !== entry.content) {
-            activeEdits.delete(entry.id);
-            textarea.replaceWith(contentEl);
-            contentEl.innerHTML = cleanHtml(newContent);
-            attachCheckboxHandlers(contentEl, { ...entry, content: newContent });
-            buildViewMode();
-            await updateDoc(doc(db, 'entries', entry.id), {
-              content: newContent,
-              editHistory: arrayUnion({ content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
-            });
-          } else if (makeCurrentOnSave && newContent === initialValue && newContent !== entry.content) {
+          const changed = newContent && newContent !== entry.content;
+          const restoring = makeCurrentOnSave && newContent === initialValue && newContent !== entry.content;
+          if (changed || restoring) {
             activeEdits.delete(entry.id);
             textarea.replaceWith(contentEl);
             contentEl.innerHTML = cleanHtml(newContent);
