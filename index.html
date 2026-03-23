@@ -247,7 +247,6 @@
     .btn-edit { }
     .btn-rescue { }
     .btn-delete { }
-    .btn-confirm-delete { background: #d4728c !important; color: #fff !important; border-color: #d4728c; }
 
     .edit-textarea {
       width: 100%;
@@ -271,30 +270,25 @@
       padding: 8px;
     }
 
-    @media (prefers-color-scheme: dark) {
-      body { background: #1a1a1a; color: #e0e0e0; }
-      #new-entry { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
-      #search-input { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
-      #search-area.open { background: #1a1a1a; }
-      .header-icons button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
-      .entry-card { background: #2a2a2a; border-color: #444; }
-      .entry-card.shared { border-left-color: #7bae7f; }
-      .entry-actions button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
-      .entry-actions button:active { background: #333; }
-      .icon-bg { fill: #2a2a2a; }
-      .entry-content code { background: #383838; }
-      .entry-content pre { background: #383838; }
-      .entry-content blockquote { border-color: #555; color: #aaa; }
-      .entry-content a { color: #8ab4f8; }
-      .history-nav button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
-      .version-icon { color: #aaa; }
-      .btn-clear-history { color: #e0a0b0; border-color: #e0a0b0; }
-      .btn-edit { }
-      .btn-rescue { }
-      .btn-delete { }
-      .edit-textarea { background: #2a2a2a; color: #e0e0e0; border-color: #7bae7f; }
-      .btn-confirm-delete { background: #d4728c !important; color: #fff !important; }
-    }
+    /* ── Dark mode ── */
+    .dark body, html.dark body { background: #1a1a1a; color: #e0e0e0; }
+    .dark #new-entry { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
+    .dark #search-input { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
+    .dark #search-area.open { background: #1a1a1a; }
+    .dark .header-icons button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
+    .dark .entry-card { background: #2a2a2a; border-color: #444; }
+    .dark .entry-card.shared { border-left-color: #7bae7f; }
+    .dark .entry-actions button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
+    .dark .entry-actions button:active { background: #333; }
+    .dark .icon-bg { fill: #2a2a2a; }
+    .dark .entry-content code { background: #383838; }
+    .dark .entry-content pre { background: #383838; }
+    .dark .entry-content blockquote { border-color: #555; color: #aaa; }
+    .dark .entry-content a { color: #8ab4f8; }
+    .dark .history-nav button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
+    .dark .version-icon { color: #aaa; }
+    .dark .btn-clear-history { color: #e0a0b0; border-color: #e0a0b0; }
+    .dark .edit-textarea { background: #2a2a2a; color: #e0e0e0; border-color: #7bae7f; }
   </style>
 </head>
 <body>
@@ -307,7 +301,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-23 13:11</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-23 16:26</span></h1>
       <div class="header-icons">
         <button id="toggle-view" title="Filter view"></button>
         <button id="toggle-search" title="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><line x1="22" y1="22" x2="15" y2="15"/></svg></button>
@@ -522,6 +516,23 @@
 
     const entriesRef = collection(db, 'entries');
 
+    // ── Theme toggle ──
+    function applyTheme() {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    }
+    applyTheme();
+    document.getElementById('app-logo').addEventListener('click', () => {
+      const isDark = document.documentElement.classList.contains('dark');
+      localStorage.setItem('theme', isDark ? 'light' : 'dark');
+      applyTheme();
+      document.querySelector('meta[name="theme-color"]').content = document.documentElement.classList.contains('dark') ? '#1a1a1a' : '#7bae7f';
+    });
+
     // ── Icons (outline SVGs) ──
     const svgAttrs = 'width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
     const ICON = {
@@ -548,10 +559,11 @@
         timer = null;
         document.removeEventListener('pointerdown', onOutside, true);
         btn.innerHTML = icon;
-        btn.className = btn.dataset.baseClass || '';
+        if (btn.dataset.baseClass != null) btn.className = btn.dataset.baseClass;
       };
       const onOutside = (e) => { if (!btn.contains(e.target)) reset(); };
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         if (pending) {
           reset();
           confirmAction();
@@ -560,8 +572,7 @@
         reset(); // clear any stale timer/listener from a previous cycle
         pending = true;
         btn.dataset.baseClass = btn.className;
-        btn.textContent = 'Confirm?';
-        btn.className = 'btn-confirm-delete';
+        btn.innerHTML = icon.replace(/stroke="currentColor"/g, 'stroke="#d4728c"');
         document.addEventListener('pointerdown', onOutside, true);
         timer = setTimeout(reset, 3000);
       });
