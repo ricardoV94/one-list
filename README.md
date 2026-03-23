@@ -11,7 +11,7 @@ Built as a single-page PWA with Firebase — no build step, no dependencies beyo
 - **Inline editing** — edit in place with version history; browse, restore, or delete past versions
 - **Sharing** — toggle entries as shared; collaborators can view and edit shared entries
 - **Search & filter** — full-text search and view mode cycling (all / shared / unshared)
-- **Markdown** — entries render as Markdown with links, code blocks, lists, etc.
+- **Markdown** — entries render as Markdown with links, code blocks, lists, etc.; toolbar buttons for bullet lists and checkboxes
 - **Offline-first** — Firestore persistent cache + service worker; works without connectivity
 - **Dark mode** — follows system preference
 - **PWA** — installable on mobile and desktop
