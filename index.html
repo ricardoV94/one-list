@@ -302,7 +302,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-27 00:57</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-27 01:04</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <button id="toggle-view" title="Filter view"></button>
@@ -1079,17 +1079,23 @@
       if (renderAbort) renderAbort.abort();
       renderAbort = new AbortController();
       const strip = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-      const filter = strip(currentFilter);
+      const tokens = strip(currentFilter).split(/\s+/).filter(Boolean);
 
       const visibleIds = new Set();
       const orderedCards = [];
+      const cardScores = [];
 
       for (let entry of allEntries) {
         // View mode filter
         const isOwn = entry.owner === currentUserEmail;
         if (viewMode === 'unshared' && (!isOwn || entry.shared)) continue;
         if (viewMode === 'shared' && !entry.shared) continue;
-        if (filter && !strip(entry.content).includes(filter)) continue;
+        if (tokens.length) {
+          const stripped = strip(entry.content);
+          const score = tokens.filter(t => stripped.includes(t)).length;
+          if (!score) continue;
+          cardScores.push(score);
+        }
 
         visibleIds.add(entry.id);
 
@@ -1143,6 +1149,14 @@
           result.buildViewMode();
         }
         orderedCards.push(result.card);
+      }
+
+      // Sort by search relevance (number of matching tokens), preserving order for ties
+      if (cardScores.length) {
+        const indexed = orderedCards.map((card, i) => ({ card, score: cardScores[i], i }));
+        indexed.sort((a, b) => b.score - a.score || a.i - b.i);
+        orderedCards.length = 0;
+        for (const item of indexed) orderedCards.push(item.card);
       }
 
       // Remove cards for entries no longer visible
