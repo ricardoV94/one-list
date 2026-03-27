@@ -242,7 +242,7 @@
 
     .history-viewing .entry-content { opacity: 0.7; }
 
-    .btn-clear-history { color: #d4728c; border-color: #d4728c; font-size: 0.8rem; padding: 2px 8px; }
+    .btn-clear-history { }
 
     .btn-edit { }
     .btn-rescue { }
@@ -288,7 +288,7 @@
     .dark .entry-content a { color: #8ab4f8; }
     .dark .history-nav button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
     .dark .version-icon { color: #aaa; }
-    .dark .btn-clear-history { color: #e0a0b0; border-color: #e0a0b0; }
+    .dark .btn-clear-history { }
     .dark .edit-textarea { background: #2a2a2a; color: #e0e0e0; border-color: #7bae7f; }
   </style>
 </head>
@@ -302,7 +302,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-26 23:36</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-27 00:57</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <button id="toggle-view" title="Filter view"></button>
@@ -564,6 +564,8 @@
         document.removeEventListener('pointerdown', onOutside, true);
         btn.innerHTML = icon;
         if (btn.dataset.baseClass != null) btn.className = btn.dataset.baseClass;
+        btn.style.background = '';
+        btn.style.borderColor = '';
       };
       const onOutside = (e) => { if (!btn.contains(e.target)) reset(); };
       btn.addEventListener('click', (e) => {
@@ -576,7 +578,11 @@
         reset(); // clear any stale timer/listener from a previous cycle
         pending = true;
         btn.dataset.baseClass = btn.className;
-        btn.innerHTML = icon.replace(/stroke="currentColor"/g, 'stroke="#d4728c"');
+        btn.innerHTML = icon.replace(/stroke="currentColor"/g, 'stroke="#fff"');
+        const bg = btn.querySelector('.icon-bg');
+        if (bg) bg.style.fill = '#d4728c';
+        btn.style.background = '#d4728c';
+        btn.style.borderColor = '#d4728c';
         document.addEventListener('pointerdown', onOutside, true);
         timer = setTimeout(reset, 3000);
       });
@@ -612,7 +618,7 @@
     const searchArea = document.getElementById('search-area');
 
     function updateViewBtn() {
-      const map = { all: [ICON.viewAll, 'All', ''], shared: [ICON.viewShared, 'Shared', 'color:#7bae7f;border-color:#7bae7f'], unshared: [ICON.viewUnshared, 'Unshared', ''] };
+      const map = { all: [ICON.viewAll, 'All', ''], shared: [ICON.viewShared, 'Shared', 'background:#7bae7f;border-color:#7bae7f;color:#fff'], unshared: [ICON.viewUnshared, 'Unshared', ''] };
       const [icon, label, style] = map[viewMode];
       toggleViewBtn.innerHTML = icon + '<span style="margin-left:4px">' + label + '</span>';
       toggleViewBtn.style.cssText = style;
@@ -941,7 +947,7 @@
           const shareBtn = document.createElement('button');
           shareBtn.innerHTML = entry.shared ? ICON.share : ICON.unshare;
           shareBtn.title = entry.shared ? 'Unshare' : 'Share';
-          if (entry.shared) shareBtn.style.cssText = 'color:#7bae7f;border-color:#7bae7f';
+          if (entry.shared) shareBtn.style.cssText = 'background:#7bae7f;border-color:#7bae7f;color:#fff';
           shareBtn.addEventListener('click', async () => {
             await updateDoc(doc(db, 'entries', entry.id), { shared: !entry.shared });
           });
@@ -1072,7 +1078,8 @@
     function renderEntries() {
       if (renderAbort) renderAbort.abort();
       renderAbort = new AbortController();
-      const filter = currentFilter.toLowerCase();
+      const strip = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const filter = strip(currentFilter);
 
       const visibleIds = new Set();
       const orderedCards = [];
@@ -1082,7 +1089,7 @@
         const isOwn = entry.owner === currentUserEmail;
         if (viewMode === 'unshared' && (!isOwn || entry.shared)) continue;
         if (viewMode === 'shared' && !entry.shared) continue;
-        if (filter && !entry.content.toLowerCase().includes(filter)) continue;
+        if (filter && !strip(entry.content).includes(filter)) continue;
 
         visibleIds.add(entry.id);
 
