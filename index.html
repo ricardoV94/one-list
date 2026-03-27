@@ -242,12 +242,6 @@
 
     .history-viewing .entry-content { opacity: 0.7; }
 
-    .btn-clear-history { }
-
-    .btn-edit { }
-    .btn-rescue { }
-    .btn-delete { }
-
     .edit-textarea {
       width: 100%;
       min-height: 80px;
@@ -288,7 +282,6 @@
     .dark .entry-content a { color: #8ab4f8; }
     .dark .history-nav button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
     .dark .version-icon { color: #aaa; }
-    .dark .btn-clear-history { }
     .dark .edit-textarea { background: #2a2a2a; color: #e0e0e0; border-color: #7bae7f; }
   </style>
 </head>
@@ -302,7 +295,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-27 01:04</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-27 01:11</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <button id="toggle-view" title="Filter view"></button>
@@ -587,6 +580,8 @@
         timer = setTimeout(reset, 3000);
       });
     }
+
+    const strip = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
     // ── State ──
     let allEntries = [];
@@ -1078,7 +1073,6 @@
     function renderEntries() {
       if (renderAbort) renderAbort.abort();
       renderAbort = new AbortController();
-      const strip = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
       const tokens = strip(currentFilter).split(/\s+/).filter(Boolean);
 
       const visibleIds = new Set();
