@@ -1,4 +1,4 @@
-const CACHE_NAME = 'onelist-2026-03-27 00:57';
+const CACHE_NAME = 'onelist-2026-03-27 01:04';
 const SHELL_FILES = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (e) => {
