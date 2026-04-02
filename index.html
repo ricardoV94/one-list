@@ -185,6 +185,8 @@
     /* ── Todo items - ( ) — circular checkbox ── */
     .entry-content li.todo-item { list-style: none; margin-left: -24px; display: flex; align-items: center; padding: 5px 0; }
     .entry-content li.todo-item + li.todo-item { border-top: 1px solid #eee; }
+    .history-viewing .entry-content li.todo-item + li.todo-item { border-top: none; }
+    .history-viewing .entry-content li.todo-item { padding: 0; }
     .entry-content li.todo-item input[type="checkbox"] { border-radius: 50%; margin-right: 6px; }
     .entry-content li.todo-item .todo-text { flex: 1; }
     .entry-content li.todo-item.checked .todo-text { color: #aaa; text-decoration: line-through; }
@@ -292,15 +294,15 @@
 
     /* ── View filter popover (opens below) ── */
     .view-popover {
-      display: none; position: absolute; top: calc(100% + 4px); right: 0;
+      display: none; position: absolute; top: calc(100% + 4px); left: 0;
       background: #fff; border: 1px solid #ddd; border-radius: 8px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.12); overflow: hidden; z-index: 100;
     }
     .view-popover.show { display: flex; flex-direction: column; }
     .view-popover button {
-      display: flex; align-items: center; gap: 8px;
+      display: flex; align-items: center; justify-content: flex-start; gap: 8px;
       padding: 8px 14px; border: none; background: #fff; cursor: pointer;
-      color: #222; white-space: nowrap; font-size: 0.85rem;
+      color: #222; white-space: nowrap; font-size: 0.85rem; width: 100%;
     }
     .view-popover button:hover { background: #f0f0f0; }
     .view-popover button:not(:last-child) { border-bottom: 1px solid #f0f0f0; }
@@ -370,7 +372,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-02 12:08</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-02 12:40</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -917,14 +919,17 @@
       const now = Date.now();
       const diff = now - date.getTime();
       const mins = Math.floor(diff / 60000);
-      if (mins < 1) return 'just now';
-      if (mins < 60) return mins + 'm ago';
+      if (mins < 1) return 'now';
+      if (mins < 60) return mins + 'min ago';
       const hrs = Math.floor(mins / 60);
       if (hrs < 24) return hrs + 'h ago';
       const days = Math.floor(hrs / 24);
       if (days < 7) return days + 'd ago';
       if (days < 30) return Math.floor(days / 7) + 'w ago';
-      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+      const months = Math.floor(days / 30);
+      if (months < 12) return months + 'm ago';
+      const years = Math.floor(months / 12);
+      return years + 'y ago';
     }
 
     const strip = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -958,20 +963,73 @@
     const inputArea = document.getElementById('input-area');
     const searchArea = document.getElementById('search-area');
 
+    const viewPopover = document.getElementById('view-popover');
+    const VIEW_MODES = [
+      { id: 'all',      icon: ICON.viewAll,      label: 'All' },
+      { id: 'shared',   icon: ICON.viewShared,   label: 'Shared',   activeStyle: 'background:#7bae7f;border-color:#7bae7f;color:#fff' },
+      { id: 'unshared', icon: ICON.viewUnshared,  label: 'Unshared' },
+    ];
+
     function updateViewBtn() {
-      const map = { all: [ICON.viewAll, 'All', ''], shared: [ICON.viewShared, 'Shared', 'background:#7bae7f;border-color:#7bae7f;color:#fff'], unshared: [ICON.viewUnshared, 'Unshared', ''] };
-      const [icon, label, style] = map[viewMode];
-      toggleViewBtn.innerHTML = icon + '<span style="margin-left:4px">' + label + '</span>';
-      toggleViewBtn.style.cssText = style;
+      const m = VIEW_MODES.find(v => v.id === viewMode);
+      toggleViewBtn.innerHTML = m.icon + '<span style="margin-left:4px">' + m.label + '</span>';
+      toggleViewBtn.style.cssText = m.activeStyle || '';
     }
+
+    function buildViewPopover() {
+      viewPopover.innerHTML = '';
+      VIEW_MODES.forEach(m => {
+        const b = document.createElement('button');
+        b.innerHTML = m.icon + ' ' + m.label;
+        if (m.id === viewMode) b.classList.add('active');
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          viewMode = m.id;
+          updateViewBtn();
+          renderEntries();
+          viewPopover.classList.remove('show');
+        });
+        viewPopover.appendChild(b);
+      });
+    }
+
     updateViewBtn();
 
-    toggleViewBtn.addEventListener('click', () => {
-      if (viewMode === 'all') viewMode = 'shared';
-      else if (viewMode === 'shared') viewMode = 'unshared';
-      else viewMode = 'all';
+    toggleViewBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = VIEW_MODES.findIndex(v => v.id === viewMode);
+      viewMode = VIEW_MODES[(idx + 1) % VIEW_MODES.length].id;
       updateViewBtn();
       renderEntries();
+    });
+
+    // Hover: show popover
+    let viewHoverTimer = null;
+    toggleViewBtn.addEventListener('mouseenter', () => {
+      viewHoverTimer = setTimeout(() => { buildViewPopover(); viewPopover.classList.add('show'); }, 400);
+    });
+    toggleViewBtn.addEventListener('mouseleave', () => {
+      clearTimeout(viewHoverTimer);
+      setTimeout(() => {
+        if (!viewPopover.matches(':hover') && !toggleViewBtn.matches(':hover')) viewPopover.classList.remove('show');
+      }, 200);
+    });
+    viewPopover.addEventListener('mouseleave', () => {
+      setTimeout(() => {
+        if (!viewPopover.matches(':hover') && !toggleViewBtn.matches(':hover')) viewPopover.classList.remove('show');
+      }, 200);
+    });
+
+    // Touch: long press
+    let viewPressTimer = null;
+    toggleViewBtn.addEventListener('touchstart', (e) => {
+      viewPressTimer = setTimeout(() => { e.preventDefault(); buildViewPopover(); viewPopover.classList.add('show'); }, 500);
+    }, { passive: false });
+    toggleViewBtn.addEventListener('touchend', () => clearTimeout(viewPressTimer));
+    toggleViewBtn.addEventListener('touchmove', () => clearTimeout(viewPressTimer));
+
+    document.addEventListener('click', (e) => {
+      if (!viewPopover.contains(e.target) && !toggleViewBtn.contains(e.target)) viewPopover.classList.remove('show');
     });
 
     signOutBtn.innerHTML = ICON.signOut;
@@ -1091,18 +1149,29 @@
 
       const dateEl = document.createElement('div');
       dateEl.className = 'entry-date';
-      const ts = entry.sortTime?.toDate?.() || entry.createdAt?.toDate?.() || new Date();
-      const dateText = document.createElement('span');
-      dateText.textContent = relativeTime(ts);
-      dateEl.appendChild(dateText);
-
       // History state
       const history = entry.editHistory || [];
       const hasHistory = history.length > 0;
+      // Last edit time: last history entry's editedAt, or createdAt if never edited
+      const lastEditedAt = hasHistory ? history[history.length - 1].editedAt : null;
+      let ts = lastEditedAt ? new Date(lastEditedAt) : (entry.createdAt?.toDate?.() || new Date());
+      const dateText = document.createElement('span');
+      dateText.textContent = relativeTime(ts);
+      dateEl.appendChild(dateText);
       let historyOpen = false;
-      let versions = hasHistory
-        ? [...history.map(h => ({ content: h.content, date: h.editedAt })), { content: entry.content, date: null }]
-        : [{ content: entry.content, date: null }];
+      // Build versions with correct "created at" dates:
+      // version 0 was created at entry.createdAt, version N was created at history[N-1].editedAt
+      let versions;
+      if (hasHistory) {
+        const createdIso = entry.createdAt?.toDate?.()?.toISOString() || null;
+        versions = [
+          { content: history[0].content, date: createdIso },
+          ...history.slice(1).map((h, i) => ({ content: h.content, date: history[i].editedAt })),
+          { content: entry.content, date: history[history.length - 1].editedAt }
+        ];
+      } else {
+        versions = [{ content: entry.content, date: null }];
+      }
       let versionIdx = versions.length - 1;
 
       const contentEl = document.createElement('div');
@@ -1120,7 +1189,11 @@
       const histDeleteSlot = document.createElement('span');
       histDeleteSlot.style.cssText = 'display:flex;';
 
-      const fmtDate = (iso) => relativeTime(new Date(iso));
+      const fmtDate = (iso) => {
+        const d = new Date(iso);
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          + ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+      };
 
       const prevBtn = document.createElement('button');
       prevBtn.textContent = '\u2190';
@@ -1210,12 +1283,17 @@
         const isCurrent = versionIdx === versions.length - 1;
         contentEl.innerHTML = cleanHtml(versions[versionIdx].content);
         applyTodoMarkup(contentEl);
+        // Remove interactive elements (x buttons, add triggers) and disable checkboxes
+        contentEl.querySelectorAll('.todo-x').forEach(x => x.remove());
+        contentEl.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.disabled = true; });
         prevBtn.disabled = versionIdx === 0;
         nextBtn.disabled = isCurrent;
         label.textContent = `${versionIdx + 1}/${versions.length}`;
-        dateText.textContent = isCurrent
-          ? relativeTime(ts)
-          : fmtDate(versions[versionIdx].date);
+        const vDate = versions[versionIdx].date
+          ? fmtDate(versions[versionIdx].date)
+          : relativeTime(ts);
+        dateText.textContent = vDate;
+        histDateEl.textContent = vDate;
         card.classList.toggle('history-viewing', !isCurrent);
         buildHistoryActions();
       };
@@ -1236,7 +1314,10 @@
       prevBtn.addEventListener('click', () => { if (versionIdx > 0) { versionIdx--; updateHistoryView(); } });
       nextBtn.addEventListener('click', () => { if (versionIdx < versions.length - 1) { versionIdx++; updateHistoryView(); } });
 
+      const histDateEl = document.createElement('span');
+      histDateEl.className = 'entry-date';
       histNav.appendChild(histActions);
+      histRight.appendChild(histDateEl);
       histRight.appendChild(prevBtn);
       histRight.appendChild(label);
       histRight.appendChild(nextBtn);
@@ -1367,6 +1448,7 @@
             textarea.replaceWith(contentEl);
             contentEl.innerHTML = cleanHtml(newContent);
             attachCheckboxHandlers(contentEl, { ...entry, content: newContent });
+            ts = new Date();
             buildViewMode();
             await updateDoc(doc(db, 'entries', entry.id), {
               content: newContent,
@@ -1468,7 +1550,8 @@
               cached.card.className = 'entry-card' + (entry.shared ? ' shared' : '');
               cached.contentEl.innerHTML = cleanHtml(entry.content);
               attachCheckboxHandlers(cached.contentEl, entry);
-              const ts = entry.sortTime?.toDate?.() || entry.createdAt?.toDate?.() || new Date();
+              const hist = entry.editHistory || [];
+              const ts = hist.length ? new Date(hist[hist.length - 1].editedAt) : (entry.createdAt?.toDate?.() || new Date());
               cached.dateText.textContent = relativeTime(ts);
               cached.buildViewMode(entry);
             }
