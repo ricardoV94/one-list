@@ -140,7 +140,7 @@
 
     .entry-date {
       font-size: 0.8rem;
-      color: #888;
+      color: #bbb;
       margin-left: auto;
       white-space: nowrap;
     }
@@ -190,7 +190,7 @@
     .entry-content li.todo-item.checked .todo-text { color: #aaa; text-decoration: line-through; }
     .entry-content li.todo-item .todo-x {
       border: none; background: none; cursor: pointer; padding: 2px 4px;
-      margin-left: auto; color: #999; font-size: 1.1rem; line-height: 1;
+      margin-left: auto; color: #bbb; font-size: 1.1rem; line-height: 1;
       flex-shrink: 0; transition: color 0.12s;
     }
     .entry-content li.todo-item .todo-x:hover { color: #333; }
@@ -358,7 +358,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-02 16:00</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-02 11:46</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <button id="toggle-view" title="Filter view"></button>
@@ -450,16 +450,29 @@
     // Matches both - [ ] and - ( ) checkbox syntaxes
     const CB_RE = /^(\s*[-*]\s+)(?:\[([ xX])\]|\(([ xX]| )\))/gm;
 
+    // Re-render contentEl from markdown and re-attach all handlers
+    function rerenderContent(contentEl, entry) {
+      contentEl.innerHTML = cleanHtml(entry.content);
+      attachCheckboxHandlers(contentEl, entry);
+    }
+
     function attachCheckboxHandlers(contentEl, entry) {
       applyTodoMarkup(contentEl);
+      // Stamp each checkbox with its markdown index BEFORE visual sort
+      contentEl.querySelectorAll('input[type="checkbox"]').forEach((cb, i) => {
+        cb.dataset.mdIdx = i;
+      });
+      // Visual sort: move checked todo items to bottom of each consecutive run (DOM only)
+      contentEl.querySelectorAll('ul').forEach(sortTodoItemsInUl);
       attachTodoAddTriggers(contentEl, entry);
 
-      contentEl.querySelectorAll('input[type="checkbox"]').forEach((cb, idx) => {
+      contentEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        const mdIdx = parseInt(cb.dataset.mdIdx);
         cb.disabled = false;
         cb.addEventListener('change', async () => {
           let count = 0;
           const newContent = entry.content.replace(CB_RE, (match, prefix, sqCheck, rdCheck) => {
-            if (count++ === idx) {
+            if (count++ === mdIdx) {
               if (rdCheck !== undefined) return prefix + (cb.checked ? '(x)' : '( )');
               return prefix + (cb.checked ? '[x]' : '[ ]');
             }
@@ -467,16 +480,7 @@
           });
           if (newContent !== entry.content) {
             entry.content = newContent;
-            // For todo items, also reorder checked to bottom of consecutive run
-            const li = cb.closest('li.todo-item');
-            if (li) {
-              li.classList.toggle('checked', cb.checked);
-              const ul = li.closest('ul');
-              if (ul) sortTodoSection(ul);
-              // Rebuild markdown from reordered DOM to persist the sort
-              const reordered = rebuildTodoMarkdown(contentEl, entry.content);
-              if (reordered !== entry.content) entry.content = reordered;
-            }
+            rerenderContent(contentEl, entry);
             pendingCheckboxUpdates.add(entry.id);
             await updateDoc(doc(db, 'entries', entry.id), { content: entry.content });
             pendingCheckboxUpdates.delete(entry.id);
@@ -487,33 +491,32 @@
       // Wire up delete buttons
       contentEl.querySelectorAll('.todo-x').forEach(x => {
         x.addEventListener('click', async () => {
-          const li = x.closest('li.todo-item');
-          const cb = li?.querySelector('input[type="checkbox"]');
+          const cb = x.closest('li.todo-item')?.querySelector('input[type="checkbox"]');
           if (!cb) return;
-          // Find which checkbox index this is
-          const allCbs = [...contentEl.querySelectorAll('input[type="checkbox"]')];
-          const idx = allCbs.indexOf(cb);
-          if (idx === -1) return;
-          // Remove the line from markdown
+          const mdIdx = parseInt(cb.dataset.mdIdx);
           let count = 0;
+          const oldContent = entry.content;
           const newContent = entry.content.replace(CB_RE, (match) => {
-            if (count++ === idx) return '\x00DELETE\x00';
+            if (count++ === mdIdx) return '\x00DELETE\x00';
             return match;
           });
+          CB_RE.lastIndex = 0;
           const cleaned = newContent.split('\n').filter(l => !l.includes('\x00DELETE\x00')).join('\n');
-          li.style.transition = 'opacity 0.12s';
-          li.style.opacity = '0';
-          setTimeout(() => li.remove(), 120);
           entry.content = cleaned;
+          rerenderContent(contentEl, entry);
           pendingCheckboxUpdates.add(entry.id);
-          await updateDoc(doc(db, 'entries', entry.id), { content: cleaned });
+          await updateDoc(doc(db, 'entries', entry.id), {
+            content: cleaned,
+            editHistory: arrayUnion({ content: oldContent, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
+          });
           pendingCheckboxUpdates.delete(entry.id);
         });
       });
     }
 
-    // Sort checked todo items to bottom within each <ul>'s consecutive todo-item runs
-    function sortTodoSection(ul) {
+    // Visual-only sort: within each <ul>, move checked .todo-item to bottom
+    // of each consecutive run of .todo-item elements. Markdown is untouched.
+    function sortTodoItemsInUl(ul) {
       const children = [...ul.children];
       let run = [];
       const runs = [];
@@ -529,55 +532,6 @@
         const anchor = group[group.length - 1].nextSibling;
         sorted.forEach(li => ul.insertBefore(li, anchor));
       }
-    }
-
-    // Rebuild markdown from the current DOM order of todo items
-    function rebuildTodoMarkdown(contentEl, markdown) {
-      // Get current checkbox order from DOM (text content of each)
-      const domOrder = [];
-      contentEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-        const li = cb.closest('li');
-        const isTodo = li?.classList.contains('todo-item');
-        const textEl = li?.querySelector('.todo-text');
-        const text = (textEl ? textEl.textContent : li?.textContent || '').trim();
-        domOrder.push({ checked: cb.checked, text, isTodo });
-      });
-
-      // Get lines with checkboxes from markdown
-      const lines = markdown.split('\n');
-      const cbLines = [];
-      const cbRe = /^(\s*[-*]\s+)(?:\[([ xX])\]|\(([ xX]| )\))\s*(.*)/;
-      lines.forEach((line, i) => {
-        const m = line.match(cbRe);
-        if (m) cbLines.push({ idx: i, prefix: m[1], isTodo: m[3] !== undefined, text: m[4] });
-      });
-
-      if (cbLines.length !== domOrder.length) return markdown; // mismatch, don't reorder
-
-      // Find consecutive runs of todo lines and reorder within them
-      let run = [];
-      const runs = [];
-      for (let i = 0; i < cbLines.length; i++) {
-        if (cbLines[i].isTodo) {
-          run.push(i);
-        } else {
-          if (run.length) { runs.push([...run]); run = []; }
-        }
-      }
-      if (run.length) runs.push(run);
-
-      for (const group of runs) {
-        const uncheckedIdxs = group.filter(i => !domOrder[i].checked);
-        const checkedIdxs = group.filter(i => domOrder[i].checked);
-        const sorted = [...uncheckedIdxs, ...checkedIdxs];
-        // Collect the original lines in sorted order
-        const originalLines = group.map(i => lines[cbLines[i].idx]);
-        sorted.forEach((srcIdx, dstPos) => {
-          lines[cbLines[group[dstPos]].idx] = originalLines[group.indexOf(srcIdx)];
-        });
-      }
-
-      return lines.join('\n');
     }
 
     // Add "+" triggers at the end of each <ul> that contains todo items
@@ -602,10 +556,13 @@
         const input = row.querySelector('input');
         input.focus();
 
+        let committed = false;
         const commit = async () => {
+          if (committed) return;
           const text = input.value.trim();
           if (text) {
-            // Add to markdown: find last todo line in this section and insert after it
+            committed = true;
+            // Add to markdown: find last todo line in this ul section and insert after it
             const allCbs = [...contentEl.querySelectorAll('input[type="checkbox"]')];
             const todoLis = [...ul.querySelectorAll('li.todo-item')];
             const lastTodoLi = todoLis[todoLis.length - 1];
@@ -626,31 +583,20 @@
             CB_RE.lastIndex = 0;
 
             if (insertAfterLine >= 0) {
-              // Match indentation of the previous line
+              const oldContent = entry.content;
               const indent = lines[insertAfterLine].match(/^(\s*)/)[1];
               lines.splice(insertAfterLine + 1, 0, indent + '- ( ) ' + text);
               const newContent = lines.join('\n');
               entry.content = newContent;
-
-              // Add the item to DOM
-              const li = document.createElement('li');
-              li.className = 'todo-item';
-              li.innerHTML = '<input type="checkbox"><span class="todo-text"></span><button class="todo-x" title="Remove">\u00d7</button>';
-              li.querySelector('.todo-text').textContent = text;
-              const firstChecked = [...ul.querySelectorAll('li.todo-item.checked')][0];
-              if (firstChecked) ul.insertBefore(li, firstChecked);
-              else ul.insertBefore(li, row);
-
-              // Re-attach handlers
-              attachCheckboxHandlers(contentEl, entry);
+              rerenderContent(contentEl, entry);
 
               pendingCheckboxUpdates.add(entry.id);
-              await updateDoc(doc(db, 'entries', entry.id), { content: newContent });
+              await updateDoc(doc(db, 'entries', entry.id), {
+                content: newContent,
+                editHistory: arrayUnion({ content: oldContent, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
+              });
               pendingCheckboxUpdates.delete(entry.id);
             }
-
-            input.value = '';
-            input.focus();
           } else {
             const t2 = document.createElement('li');
             t2.className = 'todo-add-trigger';
@@ -749,10 +695,14 @@
 
       const replacement = lines.map((line, i) => {
         const indent = line.match(/^(\s*)/)[1];
+        // Detect checked state before stripping
+        const isChecked = /[-*]\s+\([xX]\)|[-*]\s+\[[xX]\]/.test(line);
         const stripped = line.replace(STRIP_LIST_RE, '$1').trim();
         if (!stripped) return line;
         if (modeId === 'numbered') return indent + (i + 1) + '. ' + stripped;
         if (modeId === 'plain') return indent + stripped;
+        if (modeId === 'todo') return indent + (isChecked ? '- (x) ' : '- ( ) ') + stripped;
+        if (modeId === 'checkbox') return indent + (isChecked ? '- [x] ' : '- [ ] ') + stripped;
         return indent + mode.prefix + stripped;
       }).join('\n');
 
