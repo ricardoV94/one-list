@@ -182,6 +182,41 @@
       border-color: #7bae7f;
     }
 
+    /* ── Todo items - ( ) — circular checkbox ── */
+    .entry-content li.todo-item { list-style: none; margin-left: -24px; display: flex; align-items: center; padding: 5px 0; }
+    .entry-content li.todo-item + li.todo-item { border-top: 1px solid #eee; }
+    .entry-content li.todo-item input[type="checkbox"] { border-radius: 50%; margin-right: 6px; }
+    .entry-content li.todo-item .todo-text { flex: 1; }
+    .entry-content li.todo-item.checked .todo-text { color: #aaa; text-decoration: line-through; }
+    .entry-content li.todo-item .todo-x {
+      border: none; background: none; cursor: pointer; padding: 2px 4px;
+      margin-left: auto; color: #999; font-size: 1.1rem; line-height: 1;
+      flex-shrink: 0; transition: color 0.12s;
+    }
+    .entry-content li.todo-item .todo-x:hover { color: #333; }
+    .todo-add-trigger {
+      list-style: none; margin-left: -24px; display: flex; align-items: center;
+      padding: 5px 0; cursor: pointer; color: #bbb; font-size: 0.9rem; gap: 6px;
+      transition: color 0.12s; border-top: 1px solid #eee;
+    }
+    .todo-add-trigger:hover { color: #7bae7f; }
+    .todo-add-trigger .plus-icon {
+      width: 18px; height: 18px; display: flex; align-items: center;
+      justify-content: center; font-size: 1.1rem; font-weight: 300;
+    }
+    .todo-add-inline {
+      list-style: none; margin-left: -24px; display: flex; align-items: center;
+      gap: 6px; padding: 4px 0; border-top: 1px solid #eee;
+    }
+    .todo-add-inline input {
+      flex: 1; padding: 6px 8px; font-size: 0.9rem; font-family: inherit;
+      border: 1px solid #ddd; border-radius: 5px; outline: none; background: #fafafa;
+    }
+    .todo-add-inline input:focus {
+      border-color: #7bae7f; box-shadow: 0 0 0 2px rgba(123,174,127,0.2); background: #fff;
+    }
+    .todo-add-inline input::placeholder { color: #bbb; }
+
     .entry-actions {
       display: flex;
       gap: 8px;
@@ -264,6 +299,22 @@
       padding: 8px;
     }
 
+    /* ── Cycle button + popover ── */
+    .cycle-wrapper { position: relative; }
+    .cycle-popover {
+      display: none; position: absolute; bottom: calc(100% + 4px); right: 0;
+      background: #fff; border: 1px solid #ddd; border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.12); overflow: hidden; z-index: 100;
+    }
+    .cycle-popover.show { display: flex; flex-direction: column; }
+    .cycle-popover button {
+      display: flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; padding: 0; border: none; background: #fff; cursor: pointer; color: #222;
+    }
+    .cycle-popover button:hover { background: #f0f0f0; }
+    .cycle-popover button:not(:last-child) { border-bottom: 1px solid #f0f0f0; }
+    .cycle-popover button.active { background: #f0f7f0; color: #5e9462; }
+
     /* ── Dark mode ── */
     .dark body, html.dark body { background: #1a1a1a; color: #e0e0e0; }
     .dark #new-entry { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
@@ -283,6 +334,18 @@
     .dark .history-nav button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
     .dark .version-icon { color: #aaa; }
     .dark .edit-textarea { background: #2a2a2a; color: #e0e0e0; border-color: #7bae7f; }
+    .dark .entry-content li.todo-item + li.todo-item { border-color: #383838; }
+    .dark .entry-content li.todo-item .todo-x { color: #666; }
+    .dark .entry-content li.todo-item .todo-x:hover { color: #ccc; }
+    .dark .todo-add-trigger { border-color: #383838; color: #555; }
+    .dark .todo-add-trigger:hover { color: #7bae7f; }
+    .dark .todo-add-inline { border-color: #383838; }
+    .dark .todo-add-inline input { background: #333; color: #e0e0e0; border-color: #555; }
+    .dark .cycle-popover { background: #2a2a2a; border-color: #444; }
+    .dark .cycle-popover button { background: #2a2a2a; color: #e0e0e0; }
+    .dark .cycle-popover button:hover { background: #333; }
+    .dark .cycle-popover button:not(:last-child) { border-color: #383838; }
+    .dark .cycle-popover button.active { background: #2a3a2a; color: #7bae7f; }
   </style>
 </head>
 <body>
@@ -295,12 +358,12 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-03-27 01:11</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-02 16:00</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <button id="toggle-view" title="Filter view"></button>
         <button id="toggle-search" title="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><line x1="22" y1="22" x2="15" y2="15"/></svg></button>
-        <button id="toggle-new" title="New entry"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <button id="toggle-new" title="New entry"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></button>
       </div>
     </header>
 
@@ -310,8 +373,7 @@
         <button id="append-btn" class="btn-edit">Save</button>
         <button id="cancel-new" class="btn-delete">Cancel</button>
         <span id="new-esc-hint" class="esc-hint"></span>
-        <button id="new-bullet-btn" title="Toggle bullet list" style="margin-left:auto;"></button>
-        <button id="new-checkbox-btn" title="Toggle checkbox"></button>
+        <span id="new-cycle-slot" style="margin-left:auto;"></span>
       </div>
     </div>
 
@@ -340,30 +402,269 @@
       return html.replace('<a ', '<a target="_blank" rel="noopener" ');
     };
     marked.setOptions({ breaks: true, gfm: true, renderer });
-    const cleanHtml = (md) => DOMPurify.sanitize(marked.parse(md), {
+    // Convert - ( ) / - (x) to standard checkboxes with a marker for post-processing
+    const TODO_MARKER = '\u200B\u200B';
+    function preprocessTodo(md) {
+      return md.replace(/^(\s*)-\s*\(( |x|X)\)/gm, (_, indent, check) =>
+        indent + '- [' + (check === ' ' ? ' ' : 'x') + '] ' + TODO_MARKER
+      );
+    }
+    const cleanHtml = (md) => DOMPurify.sanitize(marked.parse(preprocessTodo(md)), {
       ADD_TAGS: ['input'],
       ADD_ATTR: ['type', 'checked', 'disabled', 'target', 'rel'],
     });
 
+    // Post-process rendered HTML to set up todo items
+    function applyTodoMarkup(contentEl) {
+      contentEl.querySelectorAll('li').forEach(li => {
+        const cb = li.querySelector('input[type="checkbox"]');
+        if (!cb) return;
+        // Check if this li's text contains the todo marker
+        const walker = document.createTreeWalker(li, NodeFilter.SHOW_TEXT);
+        let found = false;
+        while (walker.nextNode()) {
+          if (walker.currentNode.textContent.includes(TODO_MARKER)) {
+            walker.currentNode.textContent = walker.currentNode.textContent.replace(TODO_MARKER, '');
+            found = true;
+            break;
+          }
+        }
+        if (!found) return;
+        li.classList.add('todo-item');
+        if (cb.checked) li.classList.add('checked');
+        // Wrap remaining text in a span.todo-text
+        const span = document.createElement('span');
+        span.className = 'todo-text';
+        while (cb.nextSibling) span.appendChild(cb.nextSibling);
+        li.appendChild(span);
+        // Add delete button
+        const x = document.createElement('button');
+        x.className = 'todo-x';
+        x.textContent = '\u00d7';
+        x.title = 'Remove';
+        li.appendChild(x);
+      });
+    }
+
     const pendingCheckboxUpdates = new Set();
+    // Matches both - [ ] and - ( ) checkbox syntaxes
+    const CB_RE = /^(\s*[-*]\s+)(?:\[([ xX])\]|\(([ xX]| )\))/gm;
+
     function attachCheckboxHandlers(contentEl, entry) {
+      applyTodoMarkup(contentEl);
+      attachTodoAddTriggers(contentEl, entry);
+
       contentEl.querySelectorAll('input[type="checkbox"]').forEach((cb, idx) => {
         cb.disabled = false;
         cb.addEventListener('change', async () => {
           let count = 0;
-          const newContent = entry.content.replace(/^(\s*[-*]\s+)\[([ xX])\]/gm, (match, prefix, check) => {
+          const newContent = entry.content.replace(CB_RE, (match, prefix, sqCheck, rdCheck) => {
             if (count++ === idx) {
+              if (rdCheck !== undefined) return prefix + (cb.checked ? '(x)' : '( )');
               return prefix + (cb.checked ? '[x]' : '[ ]');
             }
             return match;
           });
           if (newContent !== entry.content) {
             entry.content = newContent;
+            // For todo items, also reorder checked to bottom of consecutive run
+            const li = cb.closest('li.todo-item');
+            if (li) {
+              li.classList.toggle('checked', cb.checked);
+              const ul = li.closest('ul');
+              if (ul) sortTodoSection(ul);
+              // Rebuild markdown from reordered DOM to persist the sort
+              const reordered = rebuildTodoMarkdown(contentEl, entry.content);
+              if (reordered !== entry.content) entry.content = reordered;
+            }
             pendingCheckboxUpdates.add(entry.id);
-            await updateDoc(doc(db, 'entries', entry.id), { content: newContent });
+            await updateDoc(doc(db, 'entries', entry.id), { content: entry.content });
             pendingCheckboxUpdates.delete(entry.id);
           }
         });
+      });
+
+      // Wire up delete buttons
+      contentEl.querySelectorAll('.todo-x').forEach(x => {
+        x.addEventListener('click', async () => {
+          const li = x.closest('li.todo-item');
+          const cb = li?.querySelector('input[type="checkbox"]');
+          if (!cb) return;
+          // Find which checkbox index this is
+          const allCbs = [...contentEl.querySelectorAll('input[type="checkbox"]')];
+          const idx = allCbs.indexOf(cb);
+          if (idx === -1) return;
+          // Remove the line from markdown
+          let count = 0;
+          const newContent = entry.content.replace(CB_RE, (match) => {
+            if (count++ === idx) return '\x00DELETE\x00';
+            return match;
+          });
+          const cleaned = newContent.split('\n').filter(l => !l.includes('\x00DELETE\x00')).join('\n');
+          li.style.transition = 'opacity 0.12s';
+          li.style.opacity = '0';
+          setTimeout(() => li.remove(), 120);
+          entry.content = cleaned;
+          pendingCheckboxUpdates.add(entry.id);
+          await updateDoc(doc(db, 'entries', entry.id), { content: cleaned });
+          pendingCheckboxUpdates.delete(entry.id);
+        });
+      });
+    }
+
+    // Sort checked todo items to bottom within each <ul>'s consecutive todo-item runs
+    function sortTodoSection(ul) {
+      const children = [...ul.children];
+      let run = [];
+      const runs = [];
+      for (const child of children) {
+        if (child.classList?.contains('todo-item')) run.push(child);
+        else { if (run.length) { runs.push(run); run = []; } }
+      }
+      if (run.length) runs.push(run);
+      for (const group of runs) {
+        const unchecked = group.filter(li => !li.classList.contains('checked'));
+        const checked = group.filter(li => li.classList.contains('checked'));
+        const sorted = [...unchecked, ...checked];
+        const anchor = group[group.length - 1].nextSibling;
+        sorted.forEach(li => ul.insertBefore(li, anchor));
+      }
+    }
+
+    // Rebuild markdown from the current DOM order of todo items
+    function rebuildTodoMarkdown(contentEl, markdown) {
+      // Get current checkbox order from DOM (text content of each)
+      const domOrder = [];
+      contentEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        const li = cb.closest('li');
+        const isTodo = li?.classList.contains('todo-item');
+        const textEl = li?.querySelector('.todo-text');
+        const text = (textEl ? textEl.textContent : li?.textContent || '').trim();
+        domOrder.push({ checked: cb.checked, text, isTodo });
+      });
+
+      // Get lines with checkboxes from markdown
+      const lines = markdown.split('\n');
+      const cbLines = [];
+      const cbRe = /^(\s*[-*]\s+)(?:\[([ xX])\]|\(([ xX]| )\))\s*(.*)/;
+      lines.forEach((line, i) => {
+        const m = line.match(cbRe);
+        if (m) cbLines.push({ idx: i, prefix: m[1], isTodo: m[3] !== undefined, text: m[4] });
+      });
+
+      if (cbLines.length !== domOrder.length) return markdown; // mismatch, don't reorder
+
+      // Find consecutive runs of todo lines and reorder within them
+      let run = [];
+      const runs = [];
+      for (let i = 0; i < cbLines.length; i++) {
+        if (cbLines[i].isTodo) {
+          run.push(i);
+        } else {
+          if (run.length) { runs.push([...run]); run = []; }
+        }
+      }
+      if (run.length) runs.push(run);
+
+      for (const group of runs) {
+        const uncheckedIdxs = group.filter(i => !domOrder[i].checked);
+        const checkedIdxs = group.filter(i => domOrder[i].checked);
+        const sorted = [...uncheckedIdxs, ...checkedIdxs];
+        // Collect the original lines in sorted order
+        const originalLines = group.map(i => lines[cbLines[i].idx]);
+        sorted.forEach((srcIdx, dstPos) => {
+          lines[cbLines[group[dstPos]].idx] = originalLines[group.indexOf(srcIdx)];
+        });
+      }
+
+      return lines.join('\n');
+    }
+
+    // Add "+" triggers at the end of each <ul> that contains todo items
+    function attachTodoAddTriggers(contentEl, entry) {
+      contentEl.querySelectorAll('ul').forEach(ul => {
+        if (!ul.querySelector('li.todo-item')) return;
+        if (ul.querySelector('.todo-add-trigger, .todo-add-inline')) return;
+        const trigger = document.createElement('li');
+        trigger.className = 'todo-add-trigger';
+        trigger.innerHTML = '<span class="plus-icon">+</span> <span>Add item</span>';
+        setupTodoAddTrigger(trigger, ul, contentEl, entry);
+        ul.appendChild(trigger);
+      });
+    }
+
+    function setupTodoAddTrigger(trigger, ul, contentEl, entry) {
+      trigger.addEventListener('click', () => {
+        const row = document.createElement('li');
+        row.className = 'todo-add-inline';
+        row.innerHTML = '<input type="text" placeholder="Add item...">';
+        trigger.replaceWith(row);
+        const input = row.querySelector('input');
+        input.focus();
+
+        const commit = async () => {
+          const text = input.value.trim();
+          if (text) {
+            // Add to markdown: find last todo line in this section and insert after it
+            const allCbs = [...contentEl.querySelectorAll('input[type="checkbox"]')];
+            const todoLis = [...ul.querySelectorAll('li.todo-item')];
+            const lastTodoLi = todoLis[todoLis.length - 1];
+            const lastCb = lastTodoLi?.querySelector('input[type="checkbox"]');
+            const lastIdx = lastCb ? allCbs.indexOf(lastCb) : -1;
+
+            // Find the line index in markdown
+            let count = 0;
+            let insertAfterLine = -1;
+            const lines = entry.content.split('\n');
+            for (let i = 0; i < lines.length; i++) {
+              if (CB_RE.test(lines[i])) {
+                CB_RE.lastIndex = 0;
+                if (count === lastIdx) { insertAfterLine = i; break; }
+                count++;
+              }
+            }
+            CB_RE.lastIndex = 0;
+
+            if (insertAfterLine >= 0) {
+              // Match indentation of the previous line
+              const indent = lines[insertAfterLine].match(/^(\s*)/)[1];
+              lines.splice(insertAfterLine + 1, 0, indent + '- ( ) ' + text);
+              const newContent = lines.join('\n');
+              entry.content = newContent;
+
+              // Add the item to DOM
+              const li = document.createElement('li');
+              li.className = 'todo-item';
+              li.innerHTML = '<input type="checkbox"><span class="todo-text"></span><button class="todo-x" title="Remove">\u00d7</button>';
+              li.querySelector('.todo-text').textContent = text;
+              const firstChecked = [...ul.querySelectorAll('li.todo-item.checked')][0];
+              if (firstChecked) ul.insertBefore(li, firstChecked);
+              else ul.insertBefore(li, row);
+
+              // Re-attach handlers
+              attachCheckboxHandlers(contentEl, entry);
+
+              pendingCheckboxUpdates.add(entry.id);
+              await updateDoc(doc(db, 'entries', entry.id), { content: newContent });
+              pendingCheckboxUpdates.delete(entry.id);
+            }
+
+            input.value = '';
+            input.focus();
+          } else {
+            const t2 = document.createElement('li');
+            t2.className = 'todo-add-trigger';
+            t2.innerHTML = '<span class="plus-icon">+</span> <span>Add item</span>';
+            row.replaceWith(t2);
+            setupTodoAddTrigger(t2, ul, contentEl, entry);
+          }
+        };
+
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); commit(); }
+          if (e.key === 'Escape') { input.value = ''; commit(); }
+        });
+        input.addEventListener('blur', () => setTimeout(commit, 150));
       });
     }
     function handleListContinuation(e, textarea) {
@@ -372,10 +673,10 @@
       const before = value.slice(0, selectionStart);
       const lineStart = before.lastIndexOf('\n') + 1;
       const line = before.slice(lineStart);
-      // Match bullet/checkbox/numbered list patterns
-      const match = line.match(/^(\s*)([-*]\s+\[([ xX])\]\s?|[-*]\s+|(\d+)\.\s+)(.*)/);
+      // Match bullet/todo/checkbox/numbered list patterns
+      const match = line.match(/^(\s*)([-*]\s+\(([ xX]| )\)\s?|[-*]\s+\[([ xX])\]\s?|[-*]\s+|(\d+)\.\s+)(.*)/);
       if (!match) return false;
-      const [, indent, prefix, checkbox, num, content] = match;
+      const [, indent, prefix, todoCheck, checkbox, num, content] = match;
       // If current line's content is empty, clear the list marker instead
       if (!content) {
         e.preventDefault();
@@ -384,7 +685,10 @@
         return true;
       }
       let newPrefix;
-      if (checkbox !== undefined) {
+      if (todoCheck !== undefined) {
+        // Todo list - always insert unchecked
+        newPrefix = indent + prefix.replace(/\([ xX]\)/, '( )');
+      } else if (checkbox !== undefined) {
         // Checkbox list - always insert unchecked
         newPrefix = indent + prefix.replace(/\[[ xX]\]/, '[ ]');
       } else if (num) {
@@ -398,50 +702,38 @@
       return true;
     }
 
-    function toggleCheckboxMarker(textarea) {
-      const { selectionStart, selectionEnd, value } = textarea;
-      // Expand to full line boundaries
-      const fullStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
-      const rawEnd = selectionStart === selectionEnd
-        ? value.indexOf('\n', selectionStart)
-        : value.indexOf('\n', selectionEnd);
-      const fullEnd = rawEnd === -1 ? value.length : rawEnd;
-
-      const before = value.slice(0, fullStart);
-      const selected = value.slice(fullStart, fullEnd);
-      const after = value.slice(fullEnd);
-      const lines = selected.split('\n');
-      const hasContent = lines.some(l => l.trim());
-      const allHaveCheckbox = hasContent && lines.every(l => !l.trim() || /^\s*[-*]\s+\[[ xX]\]\s/.test(l));
-      const replacement = lines.map(line => {
-        if (hasContent && !line.trim()) return line;
-        if (allHaveCheckbox) {
-          return line.replace(/^(\s*)[-*]\s+\[[ xX]\]\s?/, '$1');
-        }
-        if (/^\s*[-*]\s+\[[ xX]\]\s/.test(line)) return line;
-        // Strip existing bullet prefix before adding checkbox
-        const stripped = line.replace(/^(\s*)[-*]\s+/, '$1');
-        return stripped.replace(/^(\s*)/, '$1- [ ] ');
-      }).join('\n');
-      textarea.value = before + replacement + after;
-      textarea.selectionStart = before.length;
-      textarea.selectionEnd = before.length + replacement.length;
-      textarea.dispatchEvent(new Event('input'));
-      textarea.focus();
+    // ── List-mode cycle icons ──
+    function listModeIcon(mode) {
+      const a = `width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"`;
+      const lines = `<line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/>`;
+      if (mode === 'todo') return `<svg ${a}>${lines}<polyline points="2.5 6 4 7.5 7.5 4" stroke-width="2"/><polyline points="2.5 12 4 13.5 7.5 10" stroke-width="2"/><polyline points="2.5 18 4 19.5 7.5 16" stroke-width="2"/></svg>`;
+      if (mode === 'checkbox') return `<svg ${a}>${lines}<rect x="3" y="4" width="4" height="4" rx="0.8" fill="none" stroke-width="1.2"/><rect x="3" y="10" width="4" height="4" rx="0.8" fill="none" stroke-width="1.2"/><rect x="3" y="16" width="4" height="4" rx="0.8" fill="none" stroke-width="1.2"/></svg>`;
+      if (mode === 'bullet') return `<svg ${a}>${lines}<circle cx="5" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="5" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>`;
+      if (mode === 'numbered') return `<svg ${a}>${lines}<text x="5" y="7.5" text-anchor="middle" fill="currentColor" stroke="none" font-size="7" font-family="sans-serif" font-weight="600">1</text><text x="5" y="13.5" text-anchor="middle" fill="currentColor" stroke="none" font-size="7" font-family="sans-serif" font-weight="600">2</text><text x="5" y="19.5" text-anchor="middle" fill="currentColor" stroke="none" font-size="7" font-family="sans-serif" font-weight="600">3</text></svg>`;
+      return `<svg ${a}><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`;
     }
 
-    function makeCheckboxButton(textarea) {
-      const btn = document.createElement('button');
-      btn.innerHTML = ICON.checkbox;
-      btn.title = 'Toggle checkbox';
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        toggleCheckboxMarker(textarea);
-      });
-      return btn;
+    const LIST_MODES = [
+      { id: 'todo',     label: '- ( ) Todo',     prefix: '- ( ) ' },
+      { id: 'checkbox', label: '- [ ] Checkbox',  prefix: '- [ ] ' },
+      { id: 'bullet',   label: '- Bullet',        prefix: '- ' },
+      { id: 'numbered', label: '1. Numbered',     prefix: null },
+      { id: 'plain',    label: 'Plain text',      prefix: '' },
+    ];
+    const STRIP_LIST_RE = /^(\s*)(?:[-*]\s+\([ xX]\)\s?|[-*]\s+\[[ xX]\]\s?|[-*]\s+|\d+\.\s+)/;
+
+    function detectListMode(lines) {
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        if (/^\s*[-*]\s+\([ xX]\)/.test(line)) return 'todo';
+        if (/^\s*[-*]\s+\[[ xX]\]/.test(line)) return 'checkbox';
+        if (/^\s*\d+\.\s+/.test(line)) return 'numbered';
+        if (/^\s*[-*]\s+/.test(line)) return 'bullet';
+      }
+      return 'plain';
     }
 
-    function toggleBulletMarker(textarea) {
+    function applyListMode(textarea, modeId) {
       const { selectionStart, selectionEnd, value } = textarea;
       const fullStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
       const rawEnd = selectionStart === selectionEnd
@@ -453,19 +745,17 @@
       const selected = value.slice(fullStart, fullEnd);
       const after = value.slice(fullEnd);
       const lines = selected.split('\n');
-      const hasContent = lines.some(l => l.trim());
-      const allHaveBullet = hasContent && lines.every(l => !l.trim() || (/^\s*[-*]\s+/.test(l) && !/^\s*[-*]\s+\[[ xX]\]\s/.test(l)));
-      const replacement = lines.map(line => {
-        if (hasContent && !line.trim()) return line;
-        if (allHaveBullet) {
-          return line.replace(/^(\s*)[-*]\s+/, '$1');
-        }
-        // Already a plain bullet (not checkbox) — keep it
-        if (/^\s*[-*]\s+/.test(line) && !/^\s*[-*]\s+\[[ xX]\]\s/.test(line)) return line;
-        // Strip existing checkbox prefix before adding bullet
-        const stripped = line.replace(/^(\s*)[-*]\s+\[[ xX]\]\s?/, '$1');
-        return stripped.replace(/^(\s*)/, '$1- ');
+      const mode = LIST_MODES.find(m => m.id === modeId);
+
+      const replacement = lines.map((line, i) => {
+        const indent = line.match(/^(\s*)/)[1];
+        const stripped = line.replace(STRIP_LIST_RE, '$1').trim();
+        if (!stripped) return line;
+        if (modeId === 'numbered') return indent + (i + 1) + '. ' + stripped;
+        if (modeId === 'plain') return indent + stripped;
+        return indent + mode.prefix + stripped;
       }).join('\n');
+
       textarea.value = before + replacement + after;
       textarea.selectionStart = before.length;
       textarea.selectionEnd = before.length + replacement.length;
@@ -473,15 +763,97 @@
       textarea.focus();
     }
 
-    function makeBulletButton(textarea) {
+    function makeCycleButton(textarea) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'cycle-wrapper';
       const btn = document.createElement('button');
-      btn.innerHTML = ICON.bulletList;
-      btn.title = 'Toggle bullet list';
+      btn.style.cssText = 'padding:6px 10px;font-size:0.85rem;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;min-height:36px;display:flex;align-items:center;justify-content:center;';
+      const popover = document.createElement('div');
+      popover.className = 'cycle-popover';
+      wrapper.append(btn, popover);
+
+      function getSelected() {
+        const { selectionStart, selectionEnd, value } = textarea;
+        const fullStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+        const rawEnd = selectionStart === selectionEnd
+          ? value.indexOf('\n', selectionStart)
+          : value.indexOf('\n', selectionEnd);
+        const fullEnd = rawEnd === -1 ? value.length : rawEnd;
+        return value.slice(fullStart, fullEnd).split('\n');
+      }
+
+      function updateBtn() {
+        const current = detectListMode(getSelected());
+        const idx = LIST_MODES.findIndex(m => m.id === current);
+        const nextIdx = (idx + 1) % LIST_MODES.length;
+        btn.innerHTML = listModeIcon(LIST_MODES[nextIdx].id);
+        btn.title = LIST_MODES[nextIdx].label;
+      }
+
+      function buildPopover() {
+        const current = detectListMode(getSelected());
+        popover.innerHTML = '';
+        LIST_MODES.forEach(m => {
+          const b = document.createElement('button');
+          b.innerHTML = listModeIcon(m.id);
+          b.title = m.label;
+          if (m.id === current) b.classList.add('active');
+          b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            applyListMode(textarea, m.id);
+            updateBtn();
+            popover.classList.remove('show');
+          });
+          popover.appendChild(b);
+        });
+      }
+
       btn.addEventListener('click', (e) => {
         e.preventDefault();
-        toggleBulletMarker(textarea);
+        e.stopPropagation();
+        const current = detectListMode(getSelected());
+        const idx = LIST_MODES.findIndex(m => m.id === current);
+        const nextIdx = (idx + 1) % LIST_MODES.length;
+        applyListMode(textarea, LIST_MODES[nextIdx].id);
+        updateBtn();
       });
-      return btn;
+
+      // Hover: show popover
+      let hoverTimer = null;
+      btn.addEventListener('mouseenter', () => {
+        hoverTimer = setTimeout(() => { buildPopover(); popover.classList.add('show'); }, 400);
+      });
+      btn.addEventListener('mouseleave', () => {
+        clearTimeout(hoverTimer);
+        setTimeout(() => {
+          if (!popover.matches(':hover') && !btn.matches(':hover')) popover.classList.remove('show');
+        }, 200);
+      });
+      popover.addEventListener('mouseleave', () => {
+        setTimeout(() => {
+          if (!popover.matches(':hover') && !btn.matches(':hover')) popover.classList.remove('show');
+        }, 200);
+      });
+
+      // Touch: long press
+      let pressTimer = null;
+      btn.addEventListener('touchstart', (e) => {
+        pressTimer = setTimeout(() => { e.preventDefault(); buildPopover(); popover.classList.add('show'); }, 500);
+      }, { passive: false });
+      btn.addEventListener('touchend', () => clearTimeout(pressTimer));
+      btn.addEventListener('touchmove', () => clearTimeout(pressTimer));
+
+      document.addEventListener('click', (e) => {
+        if (!popover.contains(e.target) && !btn.contains(e.target)) popover.classList.remove('show');
+      });
+
+      // Update icon when textarea changes
+      textarea.addEventListener('input', updateBtn);
+      textarea.addEventListener('click', updateBtn);
+      textarea.addEventListener('keyup', updateBtn);
+      setTimeout(updateBtn, 0);
+
+      return wrapper;
     }
 
     // ── Firebase SDK imports ──
@@ -542,8 +914,6 @@
       viewAll: `<svg ${svgAttrs}><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
       viewShared: `<svg ${svgAttrs}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`,
       viewUnshared: `<svg ${svgAttrs}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
-      checkbox: `<svg ${svgAttrs}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>`,
-      bulletList: `<svg ${svgAttrs}><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`,
     };
 
     // ── Confirm-to-act button helper ──
@@ -1056,11 +1426,9 @@
         actions.appendChild(saveBtn);
         actions.appendChild(cancelBtn);
         actions.appendChild(escHint);
-        const blBtn = makeBulletButton(textarea);
-        blBtn.style.marginLeft = 'auto';
-        actions.appendChild(blBtn);
-        const cbBtn = makeCheckboxButton(textarea);
-        actions.appendChild(cbBtn);
+        const cycleEl = makeCycleButton(textarea);
+        cycleEl.style.marginLeft = 'auto';
+        actions.appendChild(cycleEl);
       }
 
       card.appendChild(contentEl);
@@ -1225,13 +1593,8 @@
 
     // ── Event listeners ──
     const cancelNewBtn = document.getElementById('cancel-new');
-    const newCheckboxBtn = document.getElementById('new-checkbox-btn');
-    const newBulletBtn = document.getElementById('new-bullet-btn');
     const newEscHint = document.getElementById('new-esc-hint');
-    newCheckboxBtn.innerHTML = ICON.checkbox;
-    newCheckboxBtn.addEventListener('click', (e) => { e.preventDefault(); toggleCheckboxMarker(newEntry); });
-    newBulletBtn.innerHTML = ICON.bulletList;
-    newBulletBtn.addEventListener('click', (e) => { e.preventDefault(); toggleBulletMarker(newEntry); });
+    document.getElementById('new-cycle-slot').appendChild(makeCycleButton(newEntry));
 
     function closeNewEntry() {
       newEntry.value = '';
