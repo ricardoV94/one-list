@@ -372,7 +372,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-02 12:42</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-02 12:44</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -520,7 +520,7 @@
           pendingCheckboxUpdates.add(entry.id);
           await updateDoc(doc(db, 'entries', entry.id), {
             content: cleaned,
-            editHistory: arrayUnion({ content: oldContent, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
+            editHistory: arrayUnion({ content: oldContent, editedAt: new Date().toISOString() })
           });
           pendingCheckboxUpdates.delete(entry.id);
         });
@@ -606,7 +606,7 @@
               pendingCheckboxUpdates.add(entry.id);
               await updateDoc(doc(db, 'entries', entry.id), {
                 content: newContent,
-                editHistory: arrayUnion({ content: oldContent, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
+                editHistory: arrayUnion({ content: oldContent, editedAt: new Date().toISOString() })
               });
               pendingCheckboxUpdates.delete(entry.id);
             }
@@ -1232,7 +1232,7 @@
           rescueVerBtn.addEventListener('click', async () => {
             const rescuedContent = versions[versionIdx].content;
             const newHistory = history.map((h, i) => i === versionIdx
-              ? { content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() }
+              ? { content: entry.content, editedAt: new Date().toISOString() }
               : h
             );
             await updateDoc(doc(db, 'entries', entry.id), {
@@ -1452,7 +1452,7 @@
             buildViewMode();
             await updateDoc(doc(db, 'entries', entry.id), {
               content: newContent,
-              editHistory: arrayUnion({ content: entry.content, editedAt: (entry.sortTime?.toDate?.() || new Date()).toISOString() })
+              editHistory: arrayUnion({ content: entry.content, editedAt: new Date().toISOString() })
             });
           } else {
             cancelEdit();
