@@ -162,14 +162,14 @@
     .entry-content h2 { font-size: 0.95rem; margin: 0 0 5px 0; }
     .entry-content h3 { font-size: 0.85rem; margin: 0 0 4px 0; color: #555; font-weight: 600; }
     .entry-content a { color: #5e9462; }
-    .entry-content li:has(input[type="checkbox"]) { list-style: none; margin-left: -24px; }
+    .entry-content li:has(input[type="checkbox"]) { list-style: none; margin-left: -24px; display: flex; align-items: center; }
     .entry-content li:has(input[type="checkbox"]) input[type="checkbox"] { margin-right: 6px; }
     .entry-content li:has(input[type="checkbox"]) > ul { margin-left: 24px; }
     .entry-content input[type="checkbox"] {
       appearance: none; -webkit-appearance: none;
       width: 18px; height: 18px; min-width: 18px;
       border: 2px solid #888; border-radius: 4px;
-      cursor: pointer; position: relative; top: 2px;
+      cursor: pointer; flex-shrink: 0;
       display: inline-flex; align-items: center; justify-content: center;
     }
     .entry-content input[type="checkbox"]:checked {
@@ -372,7 +372,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-02 12:40</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-02 12:42</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
