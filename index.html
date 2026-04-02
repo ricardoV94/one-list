@@ -191,11 +191,17 @@
     .entry-content li.todo-item .todo-text { flex: 1; }
     .entry-content li.todo-item.checked .todo-text { color: #aaa; text-decoration: line-through; }
     .entry-content li.todo-item .todo-x {
-      border: none; background: none; cursor: pointer; padding: 2px 4px;
+      border: none; background: none; cursor: pointer; padding: 0;
       margin-left: auto; color: #bbb; font-size: 1.1rem; line-height: 1;
-      flex-shrink: 0; transition: color 0.12s;
+      flex-shrink: 0; transition: color 0.12s, background 0.12s;
+      border-radius: 50%; width: 22px; height: 22px; display: flex;
+      align-items: center; justify-content: center; box-sizing: border-box;
     }
     .entry-content li.todo-item .todo-x:hover { color: #d4728c; }
+    .entry-content li.todo-item .todo-x.confirm {
+      background: #d4728c; color: #fff; font-weight: bold;
+      padding-bottom: 2px;
+    }
     .todo-add-trigger {
       list-style: none; margin-left: -24px; display: flex; align-items: center;
       padding: 5px 0; cursor: pointer; color: #bbb; font-size: 0.9rem; gap: 6px;
@@ -292,6 +298,12 @@
       padding: 8px;
     }
 
+    /* Prevent text selection on long press for popover triggers */
+    .view-wrapper button, .cycle-wrapper button {
+      -webkit-user-select: none; user-select: none;
+      -webkit-touch-callout: none;
+    }
+
     /* ── View filter popover (opens below) ── */
     .view-popover {
       display: none; position: absolute; top: calc(100% + 4px); left: 0;
@@ -372,7 +384,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-02 12:44</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-02 23:00</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -502,27 +514,45 @@
         });
       });
 
-      // Wire up delete buttons
+      // Wire up delete buttons with confirm cooldown
       contentEl.querySelectorAll('.todo-x').forEach(x => {
-        x.addEventListener('click', async () => {
-          const cb = x.closest('li.todo-item')?.querySelector('input[type="checkbox"]');
-          if (!cb) return;
-          const mdIdx = parseInt(cb.dataset.mdIdx);
-          let count = 0;
-          const oldContent = entry.content;
-          const newContent = entry.content.replace(CB_RE, (match) => {
-            if (count++ === mdIdx) return '\x00DELETE\x00';
-            return match;
-          });
-          const cleaned = newContent.split('\n').filter(l => !l.includes('\x00DELETE\x00')).join('\n');
-          entry.content = cleaned;
-          rerenderContent(contentEl, entry);
-          pendingCheckboxUpdates.add(entry.id);
-          await updateDoc(doc(db, 'entries', entry.id), {
-            content: cleaned,
-            editHistory: arrayUnion({ content: oldContent, editedAt: new Date().toISOString() })
-          });
-          pendingCheckboxUpdates.delete(entry.id);
+        let pending = false, timer = null;
+        const reset = () => {
+          pending = false;
+          clearTimeout(timer); timer = null;
+          x.classList.remove('confirm');
+          document.removeEventListener('pointerdown', onOutside, true);
+        };
+        const onOutside = (e) => { if (!x.contains(e.target)) reset(); };
+        x.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (pending) {
+            reset();
+            const cb = x.closest('li.todo-item')?.querySelector('input[type="checkbox"]');
+            if (!cb) return;
+            const mdIdx = parseInt(cb.dataset.mdIdx);
+            let count = 0;
+            const oldContent = entry.content;
+            const newContent = entry.content.replace(CB_RE, (match) => {
+              if (count++ === mdIdx) return '\x00DELETE\x00';
+              return match;
+            });
+            const cleaned = newContent.split('\n').filter(l => !l.includes('\x00DELETE\x00')).join('\n');
+            entry.content = cleaned;
+            rerenderContent(contentEl, entry);
+            pendingCheckboxUpdates.add(entry.id);
+            await updateDoc(doc(db, 'entries', entry.id), {
+              content: cleaned,
+              editHistory: arrayUnion({ content: oldContent, editedAt: new Date().toISOString() })
+            });
+            pendingCheckboxUpdates.delete(entry.id);
+            return;
+          }
+          reset();
+          pending = true;
+          x.classList.add('confirm');
+          document.addEventListener('pointerdown', onOutside, true);
+          timer = setTimeout(reset, 3000);
         });
       });
     }
@@ -781,9 +811,11 @@
         updateBtn();
       });
 
-      // Hover: show popover
+      // Hover: show popover (desktop only — skip if last interaction was touch)
       let hoverTimer = null;
+      let lastTouchTime = 0;
       btn.addEventListener('mouseenter', () => {
+        if (Date.now() - lastTouchTime < 1000) return;
         hoverTimer = setTimeout(() => { buildPopover(); popover.classList.add('show'); }, 400);
       });
       btn.addEventListener('mouseleave', () => {
@@ -801,6 +833,7 @@
       // Touch: long press
       let pressTimer = null;
       btn.addEventListener('touchstart', (e) => {
+        lastTouchTime = Date.now();
         pressTimer = setTimeout(() => { e.preventDefault(); buildPopover(); popover.classList.add('show'); }, 500);
       }, { passive: false });
       btn.addEventListener('touchend', () => clearTimeout(pressTimer));
@@ -1003,9 +1036,11 @@
       renderEntries();
     });
 
-    // Hover: show popover
+    // Hover: show popover (desktop only — skip if last interaction was touch)
     let viewHoverTimer = null;
+    let viewLastTouchTime = 0;
     toggleViewBtn.addEventListener('mouseenter', () => {
+      if (Date.now() - viewLastTouchTime < 1000) return;
       viewHoverTimer = setTimeout(() => { buildViewPopover(); viewPopover.classList.add('show'); }, 400);
     });
     toggleViewBtn.addEventListener('mouseleave', () => {
@@ -1023,6 +1058,7 @@
     // Touch: long press
     let viewPressTimer = null;
     toggleViewBtn.addEventListener('touchstart', (e) => {
+      viewLastTouchTime = Date.now();
       viewPressTimer = setTimeout(() => { e.preventDefault(); buildViewPopover(); viewPopover.classList.add('show'); }, 500);
     }, { passive: false });
     toggleViewBtn.addEventListener('touchend', () => clearTimeout(viewPressTimer));
