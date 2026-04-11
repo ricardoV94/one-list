@@ -394,7 +394,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-11 13:40</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-11 13:48</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -1022,6 +1022,45 @@
 
     const strip = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
+    function searchScore(content, tokens) {
+      const lines = content.split('\n');
+      let inCode = false;
+      const zoneTexts = { h1: '', h2: '', h3: '', body: '', code: '' };
+      for (const line of lines) {
+        if (line.startsWith('```')) { inCode = !inCode; continue; }
+        if (inCode) { zoneTexts.code += ' ' + line; }
+        else if (line.startsWith('# ')) zoneTexts.h1 += ' ' + line;
+        else if (line.startsWith('## ')) zoneTexts.h2 += ' ' + line;
+        else if (line.startsWith('### ')) zoneTexts.h3 += ' ' + line;
+        else zoneTexts.body += ' ' + line;
+      }
+      // Strip each zone once
+      const zones = [
+        { text: strip(zoneTexts.h1), w: 4 },
+        { text: strip(zoneTexts.h2), w: 3 },
+        { text: strip(zoneTexts.h3), w: 2 },
+        { text: strip(zoneTexts.body), w: 1 },
+        { text: strip(zoneTexts.code), w: 0.5 },
+      ];
+      let score = 0;
+      for (const t of tokens) {
+        let best = 0;
+        for (const z of zones) {
+          if (z.text.includes(t)) { best = Math.max(best, z.w); }
+        }
+        if (!best) return 0; // token not found anywhere
+        score += best;
+      }
+      // Proximity bonus for multi-token queries
+      if (tokens.length > 1) {
+        const full = strip(content);
+        const positions = tokens.map(t => full.indexOf(t));
+        const span = Math.max(...positions) - Math.min(...positions);
+        if (span < 100) score += 2;
+      }
+      return score;
+    }
+
     // ── State ──
     let allEntries = [];
     let currentFilter = '';
@@ -1620,8 +1659,7 @@
         if (viewMode === 'unshared' && (!isOwn || entry.shared)) continue;
         if (viewMode === 'shared' && !entry.shared) continue;
         if (tokens.length) {
-          const stripped = strip(entry.content);
-          const score = tokens.filter(t => stripped.includes(t)).length;
+          const score = searchScore(entry.content, tokens);
           if (!score) continue;
           cardScores.push(score);
         }
