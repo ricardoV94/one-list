@@ -155,7 +155,15 @@
     .entry-content p:last-child { margin-bottom: 0; }
     .entry-content ul, .entry-content ol { margin: 0 0 8px 0; padding-left: 24px; }
     .entry-content code { background: #eee; padding: 1px 4px; border-radius: 3px; font-size: 0.9em; }
-    .entry-content pre { background: #eee; padding: 8px; border-radius: 6px; overflow-x: auto; margin: 0 0 8px 0; }
+    .entry-content pre { background: #eee; padding: 8px; border-radius: 6px; overflow-x: auto; margin: 0 0 8px 0; position: relative; }
+    .code-copy-btn {
+      position: absolute; top: 4px; right: 4px;
+      padding: 4px 6px; border: 1px solid #ddd; border-radius: 6px;
+      background: #fff; cursor: pointer; opacity: 0; transition: opacity 0.15s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .entry-content pre:hover .code-copy-btn { opacity: 1; }
+    .code-copy-btn.copied { opacity: 1; }
     .entry-content pre code { background: none; padding: 0; }
     .entry-content blockquote { border-left: 3px solid #ccc; margin: 0 0 8px 0; padding-left: 12px; color: #666; }
     .entry-content h1 { font-size: 1.2rem; margin: 0 0 6px 0; }
@@ -350,6 +358,8 @@
     .dark .icon-bg { fill: #2a2a2a; }
     .dark .entry-content code { background: #383838; }
     .dark .entry-content pre { background: #383838; }
+    .dark .code-copy-btn { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
+    .dark .code-copy-btn:active { background: #333; }
     .dark .entry-content blockquote { border-color: #555; color: #aaa; }
     .dark .entry-content h3 { color: #bbb; }
     .dark .entry-content a { color: #8ab4f8; }
@@ -384,7 +394,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-02 23:00</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-11 13:40</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -431,7 +441,7 @@
     // Convert - ( ) / - (x) to standard checkboxes with a marker for post-processing
     const TODO_MARKER = '\u200B\u200B';
     function preprocessTodo(md) {
-      return md.replace(/^(\s*)-\s*\(( |x|X)\)/gm, (_, indent, check) =>
+      return md.replace(/^(\s*)-\s+\(( |x|X)\)/gm, (_, indent, check) =>
         indent + '- [' + (check === ' ' ? ' ' : 'x') + '] ' + TODO_MARKER
       );
     }
@@ -482,8 +492,26 @@
       attachCheckboxHandlers(contentEl, entry);
     }
 
+    function attachCodeCopyButtons(contentEl) {
+      contentEl.querySelectorAll('pre').forEach(pre => {
+        if (pre.querySelector('.code-copy-btn')) return;
+        const code = pre.querySelector('code');
+        if (!code) return;
+        const btn = document.createElement('button');
+        btn.className = 'code-copy-btn';
+        btn.innerHTML = ICON.copy;
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await navigator.clipboard.writeText(code.textContent);
+          flashCopied(btn);
+        });
+        pre.appendChild(btn);
+      });
+    }
+
     function attachCheckboxHandlers(contentEl, entry) {
       applyTodoMarkup(contentEl);
+      attachCodeCopyButtons(contentEl);
       // Stamp each checkbox with its markdown index BEFORE visual sort
       contentEl.querySelectorAll('input[type="checkbox"]').forEach((cb, i) => {
         cb.dataset.mdIdx = i;
@@ -911,6 +939,7 @@
       viewShared: `<svg ${svgAttrs}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`,
       viewUnshared: `<svg ${svgAttrs}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
       history: `<svg ${svgAttrs}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>`,
+      copy: `<svg ${svgAttrs}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
     };
 
     // ── Confirm-to-act button helper ──
@@ -946,6 +975,32 @@
         document.addEventListener('pointerdown', onOutside, true);
         timer = setTimeout(reset, 3000);
       });
+    }
+
+    function flashCopied(btn) {
+      const white = ICON.copy.replace(/stroke="currentColor"/g, 'stroke="#fff"');
+      btn.innerHTML = white;
+      btn.style.background = '#7bae7f';
+      btn.style.borderColor = '#7bae7f';
+      btn.classList.add('copied');
+      const pre = btn.closest('pre');
+      const reset = () => {
+        btn.innerHTML = ICON.copy;
+        btn.style.background = '';
+        btn.style.borderColor = '';
+        btn.classList.remove('copied');
+      };
+      setTimeout(() => {
+        if (pre && !pre.matches(':hover')) {
+          btn.style.transition = 'none';
+          reset();
+          // force reflow so the reset paints at opacity 0 before re-enabling transition
+          btn.offsetHeight;
+          btn.style.transition = '';
+        } else {
+          reset();
+        }
+      }, 750);
     }
 
     function relativeTime(date) {
@@ -1280,6 +1335,15 @@
           histActions.appendChild(rescueVerBtn);
         }
 
+        const copyVerBtn = document.createElement('button');
+        copyVerBtn.innerHTML = ICON.copy;
+        copyVerBtn.title = 'Copy';
+        copyVerBtn.addEventListener('click', async () => {
+          await navigator.clipboard.writeText(versions[versionIdx].content);
+          flashCopied(copyVerBtn);
+        });
+        histActions.appendChild(copyVerBtn);
+
         const editVerBtn = document.createElement('button');
         editVerBtn.className = 'btn-edit';
         editVerBtn.innerHTML = ICON.edit;
@@ -1319,6 +1383,7 @@
         const isCurrent = versionIdx === versions.length - 1;
         contentEl.innerHTML = cleanHtml(versions[versionIdx].content);
         applyTodoMarkup(contentEl);
+        attachCodeCopyButtons(contentEl);
         // Remove interactive elements (x buttons, add triggers) and disable checkboxes
         contentEl.querySelectorAll('.todo-x').forEach(x => x.remove());
         contentEl.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.disabled = true; });
@@ -1389,7 +1454,16 @@
           buildEditMode(entry.content, false);
         }, { once: true });
 
+        const copyBtn = document.createElement('button');
+        copyBtn.innerHTML = ICON.copy;
+        copyBtn.title = 'Copy';
+        copyBtn.addEventListener('click', async () => {
+          await navigator.clipboard.writeText(entry.content);
+          flashCopied(copyBtn);
+        });
+
         actions.appendChild(bumpBtn);
+        actions.appendChild(copyBtn);
         actions.appendChild(editBtn);
 
         if (entryIsOwn) {
