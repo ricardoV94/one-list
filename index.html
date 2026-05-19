@@ -394,7 +394,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-04-11 13:48</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-05-19 12:06</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -903,7 +903,7 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = initializeFirestore(app, {
-      localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() })
+      localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({ forceOwnership: true }) })
     });
 
     const entriesRef = collection(db, 'entries');
@@ -1189,22 +1189,20 @@
     onAuthStateChanged(auth, async (user) => {
       if (user) {
         currentUserEmail = user.email;
-        // Check if user is in allowed list
+        authSection.style.display = 'none';
+        appSection.style.display = 'block';
+        startListening();
         try {
           const allowedDoc = await getDoc(doc(db, 'config', 'allowedUsers'));
           if (allowedDoc.exists() && !allowedDoc.data().emails.includes(user.email)) {
+            if (unsubOwn) { unsubOwn(); unsubOwn = null; }
+            if (unsubShared) { unsubShared(); unsubShared = null; }
             await signOut(auth);
             alert('Access denied. Your email is not authorized.');
             return;
           }
         } catch (e) {
-          await signOut(auth);
-          alert('Unable to verify access. Contact an admin to grant access.');
-          return;
         }
-        authSection.style.display = 'none';
-        appSection.style.display = 'block';
-        startListening();
 
         // ── Handle Web Share Target ──
         const shareParams = new URLSearchParams(window.location.search);
