@@ -394,7 +394,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-05-19 12:06</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-05-19 13:26</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -428,6 +428,10 @@
           integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR"
           crossorigin="anonymous"></script>
   <script type="module">
+    const USER_ALIASES = {
+      'ricardo.vieira1994@gmail.com': 'Ricardo',
+      'schmidtevelin94@gmail.com': 'Evelin',
+    };
     const renderer = new marked.Renderer();
     const originalLink = renderer.link.bind(renderer);
     renderer.link = function(token) {
@@ -1515,7 +1519,8 @@
         } else {
           const ownerLabel = document.createElement('span');
           ownerLabel.className = 'entry-date';
-          ownerLabel.textContent = (entry.owner || '').split('@')[0];
+          // TODO: Set aliases in Firestore
+          ownerLabel.textContent = USER_ALIASES[entry.owner] || (entry.owner || '').split('@')[0];
           actions.appendChild(ownerLabel);
         }
 
