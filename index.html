@@ -162,7 +162,8 @@
       background: #fff; cursor: pointer; opacity: 0; transition: opacity 0.15s;
       display: flex; align-items: center; justify-content: center;
     }
-    .entry-content pre:hover .code-copy-btn { opacity: 1; }
+    .pre-wrap { position: relative; }
+    .pre-wrap:hover .code-copy-btn { opacity: 1; }
     .code-copy-btn.copied { opacity: 1; }
     .entry-content pre code { background: none; padding: 0; }
     .entry-content blockquote { border-left: 3px solid #ccc; margin: 0 0 8px 0; padding-left: 12px; color: #666; }
@@ -400,7 +401,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-05-31 16:09</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-05-31 16:15</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -511,9 +512,19 @@
 
     function attachCodeCopyButtons(contentEl) {
       contentEl.querySelectorAll('pre').forEach(pre => {
-        if (pre.querySelector('.code-copy-btn')) return;
         const code = pre.querySelector('code');
         if (!code) return;
+        // Wrap the (scrollable) pre so the copy button can anchor to a
+        // non-scrolling parent and stay pinned while tall code scrolls.
+        let wrap = pre.parentElement;
+        if (wrap && wrap.classList.contains('pre-wrap')) {
+          if (wrap.querySelector('.code-copy-btn')) return;
+        } else {
+          wrap = document.createElement('div');
+          wrap.className = 'pre-wrap';
+          pre.replaceWith(wrap);
+          wrap.appendChild(pre);
+        }
         const btn = document.createElement('button');
         btn.className = 'code-copy-btn';
         btn.innerHTML = ICON.copy;
@@ -522,7 +533,7 @@
           await navigator.clipboard.writeText(code.textContent);
           flashCopied(btn);
         });
-        pre.appendChild(btn);
+        wrap.appendChild(btn);
       });
     }
 
