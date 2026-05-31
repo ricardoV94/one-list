@@ -400,7 +400,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-05-31 13:56</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-05-31 15:58</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -462,7 +462,7 @@
         indent + '- [' + (check === ' ' ? ' ' : 'x') + '] ' + TODO_MARKER
       );
     }
-    const cleanHtml = (md) => DOMPurify.sanitize(marked.parse(preprocessTodo(md)), {
+    const cleanHtml = (md, images) => DOMPurify.sanitize(marked.parse(preprocessTodo(resolveImageRefs(md, images))), {
       ADD_TAGS: ['input'],
       ADD_ATTR: ['type', 'checked', 'disabled', 'target', 'rel'],
     });
@@ -505,7 +505,7 @@
 
     // Re-render contentEl from markdown and re-attach all handlers
     function rerenderContent(contentEl, entry) {
-      contentEl.innerHTML = cleanHtml(entry.content);
+      contentEl.innerHTML = cleanHtml(entry.content, entry.images);
       attachCheckboxHandlers(contentEl, entry);
     }
 
@@ -897,68 +897,85 @@
       return wrapper;
     }
 
-    // ── Image-from-link button (toggle) ──
-    // Toggles between a link and a markdown image. Operates on the selection, or
-    // falls back to the current line if it's a URL / link / image.
-    const looksLikeUrl = (s) =>
-      /^(https?:\/\/|www\.)\S+$/i.test(s) || /^[^\s]+\.[^\s]{2,}(\/\S*)?$/.test(s);
-    const IMG_MD = /^!\[([^\]]*)\]\(([^)]*)\)$/;   // ![alt](url)
-    const LINK_MD = /^\[([^\]]*)\]\(([^)]*)\)$/;   // [text](url)
-
+    // ── Add-picture button ──
+    // On touch devices, tapping pops a small menu: "Take photo" (a `capture`
+    // input → straight to the camera) and "Choose photo" (a plain chooser).
+    // We don't rely on the OS chooser surfacing a Camera option — some phones
+    // (e.g. when Google Photos is the default handler) jump straight to the
+    // gallery with no way back to the camera. On desktop (fine pointer) there's
+    // no camera worth a menu, so we open the file dialog directly.
+    // Paste and drag-drop add images too (see attachImageInput).
     function makeImageButton(textarea) {
+      const wrapper = document.createElement('span');
+      wrapper.style.display = 'inline-flex';
+      wrapper.style.position = 'relative';
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.title = 'Toggle image from link';
+      btn.title = 'Add picture';
       btn.style.cssText = 'padding:6px 10px;font-size:0.85rem;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;min-height:36px;display:flex;align-items:center;justify-content:center;';
       btn.innerHTML = ICON.image;
+
+      const makeInput = (capture) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        if (capture) input.capture = 'environment';
+        else input.multiple = true;
+        input.style.display = 'none';
+        input.addEventListener('change', () => {
+          [...input.files].forEach(f => addImageToTextarea(textarea, f));
+          input.value = '';
+        });
+        return input;
+      };
+      const libraryInput = makeInput(false);
+      const cameraInput = makeInput(true);
+
+      const isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+
+      let menu = null;
+      const closeMenu = () => {
+        if (!menu) return;
+        menu.remove();
+        menu = null;
+        document.removeEventListener('pointerdown', onOutside, true);
+      };
+      const onOutside = (e) => { if (menu && !menu.contains(e.target) && e.target !== btn) closeMenu(); };
+      const openMenu = () => {
+        if (menu) { closeMenu(); return; }
+        menu = document.createElement('div');
+        menu.style.cssText = 'position:absolute;bottom:calc(100% + 4px);right:0;z-index:50;background:#fff;border:1px solid #ddd;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.15);overflow:hidden;width:max-content;';
+        const item = (icon, label, onPick) => {
+          const el = document.createElement('button');
+          el.type = 'button';
+          el.style.cssText = 'display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;padding:8px 12px;border:0;background:#fff;cursor:pointer;font-size:0.9rem;text-align:left;white-space:nowrap;';
+          el.innerHTML = icon + `<span>${label}</span>`;
+          el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); closeMenu(); onPick(); });
+          return el;
+        };
+        menu.append(
+          item(ICON.camera, 'Camera', () => cameraInput.click()),
+          item(ICON.image, 'Gallery', () => libraryInput.click()),
+        );
+        wrapper.appendChild(menu);
+        document.addEventListener('pointerdown', onOutside, true);
+      };
+
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const { selectionStart: s, selectionEnd: en, value } = textarea;
-        let from = s, to = en, target = value.slice(s, en).trim();
-        if (!target) {
-          // No selection → grab the current line if it's something we can toggle
-          const ls = value.lastIndexOf('\n', s - 1) + 1;
-          let le = value.indexOf('\n', s);
-          if (le === -1) le = value.length;
-          const line = value.slice(ls, le).trim();
-          if (line && (looksLikeUrl(line) || IMG_MD.test(line) || LINK_MD.test(line))) {
-            from = ls; to = le; target = line;
-          }
-        }
-        const imgM = target.match(IMG_MD);
-        const linkM = !imgM && target.match(LINK_MD);
-        let replacement, caret;
-        if (imgM) {
-          // Already an image → undo it (keep alt as a link, or fall back to bare URL)
-          const [, alt, url] = imgM;
-          replacement = alt ? `[${alt}](${url})` : url;
-          caret = from + replacement.length;
-        } else if (linkM) {
-          // A markdown link → make it an image
-          const [, txt, url] = linkM;
-          replacement = `![${txt}](${url})`;
-          caret = from + replacement.length;
-        } else if (looksLikeUrl(target)) {
-          replacement = `![](${target})`; caret = from + 2;                      // cursor in [] for alt text
-        } else if (target) {
-          replacement = `![${target}]()`; caret = from + replacement.length - 1; // cursor in () for the URL
-        } else {
-          replacement = '![]()'; caret = from + 4;                               // empty template, cursor in ()
-        }
-        textarea.setRangeText(replacement, from, to, 'end');
-        textarea.selectionStart = textarea.selectionEnd = caret;
-        textarea.dispatchEvent(new Event('input'));
-        textarea.focus();
+        if (isTouch) openMenu();
+        else libraryInput.click();
       });
-      return btn;
+      wrapper.append(btn, libraryInput, cameraInput);
+      return wrapper;
     }
 
     // ── Firebase SDK imports ──
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js';
     import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, GoogleAuthProvider, onAuthStateChanged }
       from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js';
-    import { initializeFirestore, persistentLocalCache, persistentSingleTabManager,
+    import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
              collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot,
              query, orderBy, where, serverTimestamp, arrayUnion, getDoc }
       from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js';
@@ -977,7 +994,9 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = initializeFirestore(app, {
-      localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({ forceOwnership: true }) })
+      // Multi-tab manager: tabs share one sync connection instead of fighting over a
+      // single-tab lease (forceOwnership), which could stall writes until a refresh.
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
     });
 
     const entriesRef = collection(db, 'entries');
@@ -1015,6 +1034,7 @@
       history: `<svg ${svgAttrs}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>`,
       copy: `<svg ${svgAttrs}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
       image: `<svg ${svgAttrs}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+      camera: `<svg ${svgAttrs}><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
     };
 
     // ── Confirm-to-act button helper ──
@@ -1165,17 +1185,136 @@
     const inputArea = document.getElementById('input-area');
 
     // ── Firestore 1 MiB document-size guard ──
-    // An entry is ONE document; its content + entire editHistory array share the
-    // 1,048,576-byte limit. Estimate the projected size so we can warn before saving.
+    // An entry is ONE document; content + editHistory + the images map all share the
+    // 1,048,576-byte limit. Pasted images are stored ONCE in `images` and referenced
+    // from text as `img:<id>`, so the bytes never duplicate across history versions.
     const DOC_LIMIT = 1048576;
     const byteLen = (s) => new TextEncoder().encode(s == null ? '' : String(s)).length;
-    function estimateEntrySize(content, history) {
+    function estimateEntrySize(content, history, images) {
       let size = 300; // doc name + base overhead + small fields (owner, shared, timestamps)
       size += byteLen(content) + 10; // content field
       for (const h of (history || [])) {
         size += byteLen(h && h.content) + byteLen(h && h.editedAt) + 26; // map-entry overhead
       }
+      if (images) for (const id in images) size += byteLen(id) + byteLen(images[id]) + 14; // images map
       return size;
+    }
+
+    // Resize a textarea to fit its content WITHOUT yanking the page scroll: the
+    // brief `height:auto` collapse can clamp window scroll on very tall notes.
+    function autosize(ta) {
+      const y = window.scrollY;
+      ta.style.height = 'auto';
+      ta.style.height = ta.scrollHeight + 'px';
+      if (window.scrollY !== y) window.scrollTo(0, y);
+    }
+
+    // ── Inline images (pasted / captured) ──
+    const IMG_MAX_EDGE = 960;  // longest side after downscale
+    const IMG_QUALITY = 0.65;  // WebP/JPEG quality
+
+    // Downscale + re-encode to a small data: URI. WebP where supported, else JPEG.
+    async function compressToDataUri(file) {
+      const bmp = await createImageBitmap(file);
+      const scale = Math.min(1, IMG_MAX_EDGE / Math.max(bmp.width, bmp.height));
+      const w = Math.max(1, Math.round(bmp.width * scale));
+      const h = Math.max(1, Math.round(bmp.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+      if (bmp.close) bmp.close();
+      let uri = canvas.toDataURL('image/webp', IMG_QUALITY);
+      if (uri.indexOf('data:image/webp') !== 0) uri = canvas.toDataURL('image/jpeg', IMG_QUALITY);
+      return uri;
+    }
+
+    // Content-hash id so identical images dedupe to a single stored copy.
+    async function imageId(dataUri) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(dataUri));
+      return Array.from(new Uint8Array(buf)).slice(0, 6).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // Image ids referenced by a content string plus history versions.
+    function collectImageRefs(content, history) {
+      const set = new Set();
+      const scan = (s) => { const re = /\bimg:([0-9a-f]{6,})\b/g; let m; while ((m = re.exec(s || ''))) set.add(m[1]); };
+      scan(content);
+      for (const h of (history || [])) scan(h && h.content);
+      return set;
+    }
+
+    // Rendering: swap `img:<id>` for its stored data URI.
+    function resolveImageRefs(content, images) {
+      if (!images || !content || content.indexOf('img:') === -1) return content;
+      return content.replace(/\bimg:([0-9a-f]{6,})\b/g, (m, id) => images[id] || m);
+    }
+
+    // Search / clipboard: drop the bulky ref, keep the alt text.
+    function stripImageRefs(content) {
+      return (content || '').replace(/!\[([^\]]*)\]\(img:[0-9a-f]{6,}\)/g, '$1');
+    }
+
+    // Edit mode: hide ids behind friendly `picture#N` tokens (numbered by first use).
+    function collapseForEdit(content) {
+      const order = [];
+      const idx = new Map();
+      const text = (content || '').replace(/\bimg:([0-9a-f]{6,})\b/g, (m, id) => {
+        if (!idx.has(id)) { order.push(id); idx.set(id, order.length); }
+        return 'picture#' + idx.get(id);
+      });
+      return { text, order };
+    }
+    function expandFromEdit(text, order) {
+      return (text || '').replace(/picture#(\d+)/g, (m, n) => {
+        const id = order[Number(n) - 1];
+        return id ? 'img:' + id : m;
+      });
+    }
+
+    // Pasted-but-unsaved image bytes, keyed by entry id (or '__new__'), so they
+    // survive mid-edit re-renders until the next save folds them into `images`.
+    const pendingImages = new Map();
+    const pendingFor = (key) => {
+      if (!pendingImages.has(key)) pendingImages.set(key, {});
+      return pendingImages.get(key);
+    };
+
+    // Compress a picture, dedupe by hash, stash its bytes as pending, and insert a
+    // `![](picture#N)` token at the cursor. Works for any image-enabled textarea
+    // (carries _imgKey + _imgOrder set up by the editor / composer).
+    async function addImageToTextarea(textarea, file) {
+      const key = textarea._imgKey, order = textarea._imgOrder;
+      if (!key || !order) return;
+      let dataUri;
+      try { dataUri = await compressToDataUri(file); } catch (err) { console.error('Image compress failed', err); return; }
+      const id = await imageId(dataUri);
+      let n = order.indexOf(id);
+      if (n === -1) { order.push(id); pendingFor(key)[id] = dataUri; n = order.length - 1; }
+      const token = 'picture#' + (n + 1);
+      const pos = textarea.selectionStart ?? textarea.value.length;
+      const before = textarea.value.slice(0, pos);
+      const lead = before && !before.endsWith('\n') ? '\n' : '';
+      textarea.setRangeText(lead + '![](' + token + ')\n', pos, textarea.selectionEnd ?? pos, 'end');
+      textarea.dispatchEvent(new Event('input'));
+    }
+
+    // Paste an image, or drag-drop one, onto a textarea.
+    function attachImageInput(textarea) {
+      textarea.addEventListener('paste', (e) => {
+        const imgs = [...(e.clipboardData?.items || [])].filter(i => i.kind === 'file' && i.type.startsWith('image/'));
+        if (!imgs.length) return;
+        e.preventDefault();
+        imgs.forEach(it => { const f = it.getAsFile(); if (f) addImageToTextarea(textarea, f); });
+      });
+      textarea.addEventListener('dragover', (e) => {
+        if ([...(e.dataTransfer?.items || [])].some(i => i.kind === 'file')) e.preventDefault();
+      });
+      textarea.addEventListener('drop', (e) => {
+        const files = [...(e.dataTransfer?.files || [])].filter(f => f.type.startsWith('image/'));
+        if (!files.length) return;
+        e.preventDefault();
+        files.forEach(f => addImageToTextarea(textarea, f));
+      });
     }
     const searchArea = document.getElementById('search-area');
 
@@ -1323,19 +1462,28 @@
       const ownQuery = query(entriesRef, where('owner', '==', currentUserEmail), orderBy('sortTime', 'desc'));
       const sharedQuery = query(entriesRef, where('shared', '==', true), orderBy('sortTime', 'desc'));
 
+      // If a stream errors (dropped connection, token refresh), tear both down and
+      // re-subscribe so the app self-heals instead of hanging until a manual refresh.
+      const onErr = (err) => {
+        console.error('Firestore listener error — reconnecting', err);
+        if (unsubOwn) { unsubOwn(); unsubOwn = null; }
+        if (unsubShared) { unsubShared(); unsubShared = null; }
+        if (currentUserEmail) setTimeout(startListening, 2000);
+      };
+
       unsubOwn = onSnapshot(ownQuery, { includeMetadataChanges: true }, (snapshot) => {
-        ownEntries = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        ownEntries = snapshot.docs.map(d => ({ id: d.id, ...d.data(), _pending: d.metadata.hasPendingWrites }));
         mergeAndRender();
         const hasPending = snapshot.metadata.hasPendingWrites;
         statusEl.textContent = hasPending ? 'Saving...' : '';
-      });
+      }, onErr);
 
       unsubShared = onSnapshot(sharedQuery, { includeMetadataChanges: true }, (snapshot) => {
-        sharedEntries = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        sharedEntries = snapshot.docs.map(d => ({ id: d.id, ...d.data(), _pending: d.metadata.hasPendingWrites }));
         mergeAndRender();
         const hasPending = snapshot.metadata.hasPendingWrites;
         statusEl.textContent = hasPending ? 'Saving...' : '';
-      });
+      }, onErr);
     }
 
     let renderQueued = false;
@@ -1348,8 +1496,11 @@
         for (const e of ownEntries) map.set(e.id, e);
         for (const e of sharedEntries) map.set(e.id, e);
         allEntries = [...map.values()].sort((a, b) => {
-          const ta = a.sortTime?.toMillis?.() || 0;
-          const tb = b.sortTime?.toMillis?.() || 0;
+          // A pending write with no resolved sortTime is a just-bumped/created note;
+          // float it to the top instead of letting null sort it to the bottom (which
+          // caused the bump-to-bottom-then-snap-to-top jump).
+          const ta = a.sortTime?.toMillis?.() || (a._pending ? Number.MAX_SAFE_INTEGER : 0);
+          const tb = b.sortTime?.toMillis?.() || (b._pending ? Number.MAX_SAFE_INTEGER : 0);
           return tb - ta;
         });
         renderEntries();
@@ -1393,7 +1544,7 @@
 
       const contentEl = document.createElement('div');
       contentEl.className = 'entry-content';
-      contentEl.innerHTML = cleanHtml(entry.content);
+      contentEl.innerHTML = cleanHtml(entry.content, entry.images);
       attachCheckboxHandlers(contentEl, entry);
 
       const actions = document.createElement('div');
@@ -1431,7 +1582,7 @@
         actions.style.display = 'flex';
         versionIdx = versions.length - 1;
         card.classList.remove('history-viewing');
-        contentEl.innerHTML = cleanHtml(entry.content);
+        contentEl.innerHTML = cleanHtml(entry.content, entry.images);
         attachCheckboxHandlers(contentEl, entry);
         dateText.textContent = relativeTime(ts);
       };
@@ -1465,7 +1616,7 @@
         copyVerBtn.innerHTML = ICON.copy;
         copyVerBtn.title = 'Copy';
         copyVerBtn.addEventListener('click', async () => {
-          await navigator.clipboard.writeText(versions[versionIdx].content);
+          await navigator.clipboard.writeText(resolveImageRefs(versions[versionIdx].content, entry.images));
           flashCopied(copyVerBtn);
         });
         histActions.appendChild(copyVerBtn);
@@ -1476,6 +1627,8 @@
         editVerBtn.title = 'Edit';
         editVerBtn.addEventListener('click', () => {
           histNav.style.display = 'none';
+          historyOpen = false; // we're in edit mode now, not history view
+          pendingImages.delete(entry.id);
           activeEdits.set(entry.id, { value: versions[versionIdx].content, card });
           buildEditMode(versions[versionIdx].content, !isCurrent, true);
         }, { once: true });
@@ -1506,8 +1659,11 @@
 
       const updateHistoryView = () => {
         if (!historyOpen) return;
+        // Keep the prev/next bar fixed under the cursor as versions of differing
+        // length swap in above it.
+        const anchorTop = histNav.getBoundingClientRect().top;
         const isCurrent = versionIdx === versions.length - 1;
-        contentEl.innerHTML = cleanHtml(versions[versionIdx].content);
+        contentEl.innerHTML = cleanHtml(versions[versionIdx].content, entry.images);
         applyTodoMarkup(contentEl);
         attachCodeCopyButtons(contentEl);
         // Remove interactive elements (x buttons, add triggers) and disable checkboxes
@@ -1523,6 +1679,8 @@
         histDateEl.textContent = vDate;
         card.classList.toggle('history-viewing', !isCurrent);
         buildHistoryActions();
+        const delta = histNav.getBoundingClientRect().top - anchorTop;
+        if (delta) window.scrollBy(0, delta);
       };
 
       const toggleHistory = () => {
@@ -1576,6 +1734,7 @@
         editBtn.innerHTML = ICON.edit;
         editBtn.title = 'Edit';
         editBtn.addEventListener('click', () => {
+          pendingImages.delete(entry.id);
           activeEdits.set(entry.id, { value: entry.content, card });
           buildEditMode(entry.content, false);
         }, { once: true });
@@ -1584,7 +1743,7 @@
         copyBtn.innerHTML = ICON.copy;
         copyBtn.title = 'Copy';
         copyBtn.addEventListener('click', async () => {
-          await navigator.clipboard.writeText(entry.content);
+          await navigator.clipboard.writeText(resolveImageRefs(entry.content, entry.images));
           flashCopied(copyBtn);
         });
 
@@ -1630,7 +1789,7 @@
 
         versionIdx = versions.length - 1;
         card.classList.remove('history-viewing');
-        contentEl.innerHTML = cleanHtml(entry.content);
+        contentEl.innerHTML = cleanHtml(entry.content, entry.images);
         attachCheckboxHandlers(contentEl, entry);
         dateText.textContent = relativeTime(ts);
       }
@@ -1639,18 +1798,36 @@
       function buildEditMode(initialValue, makeCurrentOnSave, returnToHistory) {
         const textarea = document.createElement('textarea');
         textarea.className = 'edit-textarea';
-        textarea.value = initialValue;
+        // Show `picture#N` tokens instead of `img:<id>` refs. activeEdits keeps the
+        // REAL (expanded) content so a mid-edit re-render re-collapses identically.
+        const key = entry.id;
+        const { text: collapsedInit, order } = collapseForEdit(initialValue);
+        textarea.value = collapsedInit;
+        textarea._imgKey = key;
+        textarea._imgOrder = order;
+        const realValue = () => expandFromEdit(textarea.value, order).trim();
         const currentContent = card.querySelector('.entry-content, .edit-textarea');
         if (currentContent) currentContent.replaceWith(textarea);
-        textarea.style.height = 'auto';
-        textarea.style.height = textarea.scrollHeight + 'px';
+        autosize(textarea);
+        // The expand + byte-count passes are O(content); on a pathologically huge
+        // note that's costly on mobile, so throttle them (autosize stays immediate
+        // for responsiveness). Save flushes synchronously so the guard is current.
+        let sizeThrottleAt = 0, sizeTrail = null;
+        const commitEditState = () => {
+          sizeThrottleAt = Date.now();
+          const real = expandFromEdit(textarea.value, order);
+          activeEdits.set(entry.id, { value: real, card });
+          refreshSizeState(real);
+        };
         textarea.addEventListener('input', () => {
-          textarea.style.height = 'auto';
-          textarea.style.height = textarea.scrollHeight + 'px';
-          activeEdits.set(entry.id, { value: textarea.value, card });
-          refreshSizeState();
+          autosize(textarea);
+          clearTimeout(sizeTrail);
+          const since = Date.now() - sizeThrottleAt;
+          if (since >= 150) commitEditState();
+          else sizeTrail = setTimeout(commitEditState, 150 - since);
         });
-        textarea.focus();
+        attachImageInput(textarea);
+        textarea.focus(); // scroll the caret (at end) into view, like mobile does
 
         actions.style.display = 'flex';
         actions.innerHTML = '';
@@ -1666,11 +1843,23 @@
         // esc-hint shows either the discard prompt (temporary) or the over-limit
         // warning (persistent while over). The discard prompt takes precedence and
         // must not be wiped; when it expires we fall back to the limit warning.
-        // Edit history is fixed while typing, so measure it once — each keystroke
-        // then only re-encodes the current content (cheap, ~same cost as autosize).
-        const histBytesFixed = (entry.editHistory || []).reduce(
+        // Text + history are short refs now; images hold the bytes (counted ONCE,
+        // even across history). History is fixed while editing, so precompute its
+        // text + referenced-image contribution; each keystroke only re-measures the
+        // small current text and sums cached per-image sizes.
+        const histTextFixed = (entry.editHistory || []).reduce(
           (a, h) => a + byteLen(h && h.content) + byteLen(h && h.editedAt) + 26, 0);
-        const archivedBytes = byteLen(entry.content) + 24 + 26; // version archived on save
+        const archivedTextBytes = byteLen(entry.content) + 24 + 26; // version archived on save
+        const histImageIds = collectImageRefs(null, entry.editHistory || []);
+        const archivedImageIds = collectImageRefs(entry.content, null);
+        const imgBytesCache = new Map();
+        const imgBytesOf = (id) => {
+          if (!imgBytesCache.has(id)) {
+            const uri = (entry.images && entry.images[id]) || pendingFor(key)[id] || '';
+            imgBytesCache.set(id, byteLen(id) + byteLen(uri) + 14);
+          }
+          return imgBytesCache.get(id);
+        };
         let editEscPending = false;
         let overPct = 0;
         const renderHint = () => {
@@ -1678,10 +1867,15 @@
           else if (overPct > 100) escHint.textContent = `Note history exceeds limit (${overPct}%)`;
           else escHint.textContent = '';
         };
-        const refreshSizeState = () => {
-          const val = textarea.value.trim();
-          const changed = val && val !== entry.content; // saving archives the current version
-          const size = 310 + byteLen(val) + histBytesFixed + (changed ? archivedBytes : 0);
+        const refreshSizeState = (realArg) => {
+          const real = realArg !== undefined ? realArg : realValue();
+          const changed = real && real !== entry.content; // saving archives the current version
+          const refs = new Set(collectImageRefs(real, null));
+          histImageIds.forEach(id => refs.add(id));
+          if (changed) archivedImageIds.forEach(id => refs.add(id));
+          let imagesBytes = 0;
+          refs.forEach(id => { imagesBytes += imgBytesOf(id); });
+          const size = 310 + byteLen(real) + histTextFixed + (changed ? archivedTextBytes : 0) + imagesBytes;
           overPct = Math.ceil(size / DOC_LIMIT * 100);
           const over = size > DOC_LIMIT;
           textarea.classList.toggle('over-limit', over);
@@ -1691,10 +1885,12 @@
 
         const cancelEdit = () => {
           activeEdits.delete(entry.id);
-          contentEl.innerHTML = cleanHtml(entry.content);
+          pendingImages.delete(key);
+          contentEl.innerHTML = cleanHtml(entry.content, entry.images);
           attachCheckboxHandlers(contentEl, entry);
           textarea.replaceWith(contentEl);
           if (returnToHistory) {
+            historyOpen = true; // returning to history view (updateHistoryView needs this)
             actions.style.display = 'none';
             histNav.style.display = 'flex';
             updateHistoryView();
@@ -1704,21 +1900,32 @@
         };
 
         const saveEdit = async () => {
+          const newContent = realValue();
+          refreshSizeState(newContent); // flush throttle so the guard reflects the latest text
           if (saveBtn.disabled) return; // over the 1 MiB document limit
-          const newContent = textarea.value.trim();
           const changed = newContent && newContent !== entry.content;
           const restoring = makeCurrentOnSave && newContent === initialValue && newContent !== entry.content;
           if (changed || restoring) {
+            // Build the images map: existing + pasted, garbage-collecting any image
+            // no longer referenced by the new content or any retained history version.
+            const archived = { content: entry.content, editedAt: new Date().toISOString() };
+            const allImages = Object.assign({}, entry.images, pendingImages.get(key));
+            const refs = collectImageRefs(newContent, (entry.editHistory || []).concat([archived]));
+            const images = {};
+            refs.forEach(id => { if (allImages[id]) images[id] = allImages[id]; });
+            pendingImages.delete(key);
+            const hadImages = entry.images && Object.keys(entry.images).length > 0;
+
             activeEdits.delete(entry.id);
+            entry.images = images; // keep local copy in sync for optimistic render
             textarea.replaceWith(contentEl);
-            contentEl.innerHTML = cleanHtml(newContent);
+            contentEl.innerHTML = cleanHtml(newContent, images);
             attachCheckboxHandlers(contentEl, { ...entry, content: newContent });
             ts = new Date();
             buildViewMode();
-            await updateDoc(doc(db, 'entries', entry.id), {
-              content: newContent,
-              editHistory: arrayUnion({ content: entry.content, editedAt: new Date().toISOString() })
-            });
+            const payload = { content: newContent, editHistory: arrayUnion(archived) };
+            if (refs.size || hadImages) payload.images = images; // write only when relevant
+            await updateDoc(doc(db, 'entries', entry.id), payload);
           } else {
             cancelEdit();
           }
@@ -1730,7 +1937,7 @@
         textarea.addEventListener('keydown', (e) => {
           if (e.key === 'Escape') {
             e.preventDefault();
-            if (textarea.value.trim() === entry.content) {
+            if (realValue() === entry.content) {
               cancelEdit();
             } else if (editEscPending) {
               cancelEdit();
@@ -1778,7 +1985,7 @@
         if (viewMode === 'unshared' && (!isOwn || entry.shared)) continue;
         if (viewMode === 'shared' && !entry.shared) continue;
         if (tokens.length) {
-          const score = searchScore(entry.content, tokens);
+          const score = searchScore(stripImageRefs(entry.content), tokens);
           if (!score) continue;
           cardScores.push(score);
         }
@@ -1815,7 +2022,7 @@
             if (prev.content !== entry.content || prev.shared !== entry.shared) {
               cached.entry = entry;
               cached.card.className = 'entry-card' + (entry.shared ? ' shared' : '');
-              cached.contentEl.innerHTML = cleanHtml(entry.content);
+              cached.contentEl.innerHTML = cleanHtml(entry.content, entry.images);
               attachCheckboxHandlers(cached.contentEl, entry);
               const hist = entry.editHistory || [];
               const ts = hist.length ? new Date(hist[hist.length - 1].editedAt) : (entry.createdAt?.toDate?.() || new Date());
@@ -1896,17 +2103,23 @@
 
     // ── Actions ──
     async function appendEntry() {
-      const content = newEntry.value.trim();
+      const content = expandFromEdit(newEntry.value, newEntry._imgOrder).trim();
       if (!content) return;
       if (appendBtn.disabled) return; // over the 1 MiB document limit
+      const pend = pendingFor('__new__');
+      const refs = collectImageRefs(content, null);
+      const images = {};
+      refs.forEach(id => { if (pend[id]) images[id] = pend[id]; });
       closeNewEntry();
-      await addDoc(entriesRef, {
+      const docData = {
         content,
         createdAt: serverTimestamp(),
         sortTime: serverTimestamp(),
         owner: currentUserEmail,
         shared: false
-      });
+      };
+      if (refs.size) docData.images = images;
+      await addDoc(entriesRef, docData);
     }
 
     async function rescueEntry(id) {
@@ -1922,6 +2135,10 @@
     const newEscHint = document.getElementById('new-esc-hint');
     document.getElementById('new-cycle-slot').appendChild(makeImageButton(newEntry));
     document.getElementById('new-cycle-slot').appendChild(makeCycleButton(newEntry));
+    // Image session for the composer (the new note isn't a doc yet → key '__new__').
+    newEntry._imgKey = '__new__';
+    newEntry._imgOrder = [];
+    attachImageInput(newEntry);
 
     function closeNewEntry() {
       newEntry.value = '';
@@ -1929,6 +2146,8 @@
       newEscHint.textContent = '';
       newEntry.classList.remove('over-limit');
       appendBtn.disabled = false;
+      newEntry._imgOrder = [];
+      pendingImages.delete('__new__');
       inputArea.classList.remove('open');
       toggleNewBtn.classList.remove('active');
     }
@@ -1944,7 +2163,12 @@
       else newEscHint.textContent = '';
     };
     const refreshNewSizeState = () => {
-      const size = estimateEntrySize(newEntry.value.trim(), []);
+      const real = expandFromEdit(newEntry.value, newEntry._imgOrder).trim();
+      const pend = pendingFor('__new__');
+      const refs = collectImageRefs(real, null);
+      const images = {};
+      refs.forEach(id => { if (pend[id]) images[id] = pend[id]; });
+      const size = estimateEntrySize(real, [], images);
       newOverPct = Math.ceil(size / DOC_LIMIT * 100);
       const over = size > DOC_LIMIT;
       newEntry.classList.toggle('over-limit', over);
