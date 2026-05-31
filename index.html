@@ -400,7 +400,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-05-31 15:58</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-05-31 16:04</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -1749,7 +1749,6 @@
 
         actions.appendChild(bumpBtn);
         actions.appendChild(copyBtn);
-        actions.appendChild(editBtn);
 
         if (entryIsOwn) {
           const shareBtn = document.createElement('button');
@@ -1769,6 +1768,8 @@
         }
 
         actions.appendChild(dateEl);
+
+        actions.appendChild(editBtn);
 
         if (hasHistory) {
           const histBtn = document.createElement('button');
