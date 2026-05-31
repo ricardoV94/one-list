@@ -255,6 +255,7 @@
     }
 
     .entry-actions button:active { background: #eee; }
+    .entry-actions button:disabled { opacity: 0.4; cursor: default; }
     .icon-bg { fill: #fff; }
 
 
@@ -299,6 +300,10 @@
       overflow-y: hidden;
     }
     .edit-textarea:focus { border-color: #7bae7f; box-shadow: 0 0 0 2px rgba(123,174,127,0.3); }
+    .edit-textarea.over-limit, .edit-textarea.over-limit:focus,
+    #new-entry.over-limit, #new-entry.over-limit:focus {
+      border-color: #d4728c; box-shadow: 0 0 0 2px rgba(212,114,140,0.3);
+    }
 
     #status {
       text-align: center;
@@ -395,7 +400,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-05-30 15:20</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-05-31 13:56</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -1158,6 +1163,20 @@
     const toggleViewBtn = document.getElementById('toggle-view');
     const signOutBtn = document.getElementById('sign-out-btn');
     const inputArea = document.getElementById('input-area');
+
+    // ── Firestore 1 MiB document-size guard ──
+    // An entry is ONE document; its content + entire editHistory array share the
+    // 1,048,576-byte limit. Estimate the projected size so we can warn before saving.
+    const DOC_LIMIT = 1048576;
+    const byteLen = (s) => new TextEncoder().encode(s == null ? '' : String(s)).length;
+    function estimateEntrySize(content, history) {
+      let size = 300; // doc name + base overhead + small fields (owner, shared, timestamps)
+      size += byteLen(content) + 10; // content field
+      for (const h of (history || [])) {
+        size += byteLen(h && h.content) + byteLen(h && h.editedAt) + 26; // map-entry overhead
+      }
+      return size;
+    }
     const searchArea = document.getElementById('search-area');
 
     const viewPopover = document.getElementById('view-popover');
@@ -1629,6 +1648,7 @@
           textarea.style.height = 'auto';
           textarea.style.height = textarea.scrollHeight + 'px';
           activeEdits.set(entry.id, { value: textarea.value, card });
+          refreshSizeState();
         });
         textarea.focus();
 
@@ -1642,6 +1662,32 @@
         cancelBtn.textContent = 'Cancel';
         const escHint = document.createElement('span');
         escHint.className = 'esc-hint';
+
+        // esc-hint shows either the discard prompt (temporary) or the over-limit
+        // warning (persistent while over). The discard prompt takes precedence and
+        // must not be wiped; when it expires we fall back to the limit warning.
+        // Edit history is fixed while typing, so measure it once — each keystroke
+        // then only re-encodes the current content (cheap, ~same cost as autosize).
+        const histBytesFixed = (entry.editHistory || []).reduce(
+          (a, h) => a + byteLen(h && h.content) + byteLen(h && h.editedAt) + 26, 0);
+        const archivedBytes = byteLen(entry.content) + 24 + 26; // version archived on save
+        let editEscPending = false;
+        let overPct = 0;
+        const renderHint = () => {
+          if (editEscPending) escHint.textContent = 'Esc again to discard';
+          else if (overPct > 100) escHint.textContent = `Note history exceeds limit (${overPct}%)`;
+          else escHint.textContent = '';
+        };
+        const refreshSizeState = () => {
+          const val = textarea.value.trim();
+          const changed = val && val !== entry.content; // saving archives the current version
+          const size = 310 + byteLen(val) + histBytesFixed + (changed ? archivedBytes : 0);
+          overPct = Math.ceil(size / DOC_LIMIT * 100);
+          const over = size > DOC_LIMIT;
+          textarea.classList.toggle('over-limit', over);
+          saveBtn.disabled = over;
+          renderHint();
+        };
 
         const cancelEdit = () => {
           activeEdits.delete(entry.id);
@@ -1658,6 +1704,7 @@
         };
 
         const saveEdit = async () => {
+          if (saveBtn.disabled) return; // over the 1 MiB document limit
           const newContent = textarea.value.trim();
           const changed = newContent && newContent !== entry.content;
           const restoring = makeCurrentOnSave && newContent === initialValue && newContent !== entry.content;
@@ -1680,7 +1727,6 @@
         saveBtn.addEventListener('click', saveEdit);
         cancelBtn.addEventListener('click', cancelEdit);
 
-        let editEscPending = false;
         textarea.addEventListener('keydown', (e) => {
           if (e.key === 'Escape') {
             e.preventDefault();
@@ -1690,8 +1736,8 @@
               cancelEdit();
             } else {
               editEscPending = true;
-              escHint.textContent = 'Esc again to discard';
-              setTimeout(() => { editEscPending = false; escHint.textContent = ''; }, 3000);
+              renderHint();
+              setTimeout(() => { editEscPending = false; renderHint(); }, 3000);
             }
           }
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveEdit(); }
@@ -1707,6 +1753,7 @@
         const cycleEl = makeCycleButton(textarea);
         cycleEl.style.marginLeft = '6px';
         actions.appendChild(cycleEl);
+        refreshSizeState();
       }
 
       card.appendChild(contentEl);
@@ -1851,6 +1898,7 @@
     async function appendEntry() {
       const content = newEntry.value.trim();
       if (!content) return;
+      if (appendBtn.disabled) return; // over the 1 MiB document limit
       closeNewEntry();
       await addDoc(entriesRef, {
         content,
@@ -1879,6 +1927,8 @@
       newEntry.value = '';
       newEntry.style.height = 'auto';
       newEscHint.textContent = '';
+      newEntry.classList.remove('over-limit');
+      appendBtn.disabled = false;
       inputArea.classList.remove('open');
       toggleNewBtn.classList.remove('active');
     }
@@ -1886,12 +1936,28 @@
     appendBtn.addEventListener('click', appendEntry);
     cancelNewBtn.addEventListener('click', () => closeNewEntry());
 
+    let newEscPending = false;
+    let newOverPct = 0;
+    const renderNewHint = () => {
+      if (newEscPending) newEscHint.textContent = 'Esc again to discard';
+      else if (newOverPct > 100) newEscHint.textContent = `Note exceeds limit (${newOverPct}%)`;
+      else newEscHint.textContent = '';
+    };
+    const refreshNewSizeState = () => {
+      const size = estimateEntrySize(newEntry.value.trim(), []);
+      newOverPct = Math.ceil(size / DOC_LIMIT * 100);
+      const over = size > DOC_LIMIT;
+      newEntry.classList.toggle('over-limit', over);
+      appendBtn.disabled = over;
+      renderNewHint();
+    };
+
     newEntry.addEventListener('input', () => {
       newEntry.style.height = 'auto';
       newEntry.style.height = newEntry.scrollHeight + 'px';
+      refreshNewSizeState();
     });
 
-    let newEscPending = false;
     newEntry.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
@@ -1906,8 +1972,8 @@
           newEscPending = false;
         } else {
           newEscPending = true;
-          newEscHint.textContent = 'Esc again to discard';
-          setTimeout(() => { newEscPending = false; newEscHint.textContent = ''; }, 3000);
+          renderNewHint();
+          setTimeout(() => { newEscPending = false; renderNewHint(); }, 3000);
         }
       }
     });
