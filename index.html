@@ -118,15 +118,32 @@
       margin-bottom: 8px;
     }
 
+    #search-wrap { position: relative; }
     #search-input {
       width: 100%;
-      padding: 10px 12px;
+      padding: 10px 36px 10px 12px;
       font-size: 1rem;
       border: 1px solid #ccc;
       border-radius: 8px;
       outline: none;
     }
     #search-input:focus { border-color: #7bae7f; box-shadow: 0 0 0 2px rgba(123,174,127,0.3); }
+    /* Hide the browser's native search clear button; we use our own for consistency */
+    #search-input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+    #search-clear {
+      display: none;
+      position: absolute;
+      top: 50%;
+      right: 8px;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      padding: 4px;
+      cursor: pointer;
+      color: #222;
+      line-height: 0;
+    }
+    #search-clear.visible { display: block; }
 
     .entry-card {
       background: #fff;
@@ -356,6 +373,7 @@
     .dark body, html.dark body { background: #1a1a1a; color: #e0e0e0; }
     .dark #new-entry { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
     .dark #search-input { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
+    .dark #search-clear { color: #e0e0e0; }
     .dark #search-area.open { background: #1a1a1a; }
     .dark .header-icons button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
     .dark .entry-card { background: #2a2a2a; border-color: #444; }
@@ -401,7 +419,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-05-31 16:15</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-06-01 15:20</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -421,7 +439,10 @@
     </div>
 
     <div id="search-area">
-      <input type="search" id="search-input" placeholder="Search entries...">
+      <div id="search-wrap">
+        <input type="search" id="search-input" placeholder="Search entries...">
+        <button id="search-clear" type="button" title="Clear" aria-label="Clear search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg></button>
+      </div>
     </div>
 
     <div id="entries-list"></div>
@@ -1408,7 +1429,7 @@
       const opened = searchArea.classList.toggle('open');
       toggleSearchBtn.classList.toggle('active', opened);
       if (opened) { searchInput.focus(); }
-      else { searchInput.value = ''; currentFilter = ''; renderEntries(); }
+      else { searchInput.value = ''; currentFilter = ''; updateSearchClear(); renderEntries(); }
     });
 
     toggleNewBtn.addEventListener('click', () => {
@@ -2217,17 +2238,31 @@
       }
     });
 
+    const searchClear = document.getElementById('search-clear');
+    function updateSearchClear() {
+      searchClear.classList.toggle('visible', searchInput.value.length > 0);
+    }
     let searchTimer;
     searchInput.addEventListener('input', (e) => {
       currentFilter = e.target.value;
+      updateSearchClear();
       clearTimeout(searchTimer);
       searchTimer = setTimeout(renderEntries, 150);
+    });
+
+    searchClear.addEventListener('click', () => {
+      searchInput.value = '';
+      currentFilter = '';
+      updateSearchClear();
+      searchInput.focus();
+      renderEntries();
     });
 
     searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         searchInput.value = '';
         currentFilter = '';
+        updateSearchClear();
         searchArea.classList.remove('open');
         toggleSearchBtn.classList.remove('active');
         renderEntries();
