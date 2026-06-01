@@ -191,6 +191,7 @@
     .entry-content img { max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 4px 0; }
     .entry-content li:has(input[type="checkbox"]) { list-style: none; margin-left: -24px; display: flex; align-items: center; }
     .entry-content li:has(input[type="checkbox"]) input[type="checkbox"] { margin-right: 6px; }
+    .entry-content li:has(input[type="checkbox"]) .todo-text { flex: 1; }
     .entry-content li:has(input[type="checkbox"]) > ul { margin-left: 24px; }
     .entry-content input[type="checkbox"] {
       appearance: none; -webkit-appearance: none;
@@ -419,7 +420,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-06-01 15:20</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-06-01 16:14</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -504,14 +505,19 @@
             break;
           }
         }
-        if (!found) return;
-        li.classList.add('todo-item');
-        if (cb.checked) li.classList.add('checked');
-        // Wrap remaining text in a span.todo-text
+        // Wrap remaining text in a span.todo-text. This applies to BOTH
+        // - ( ) (marked) and plain - [ ] checkboxes so the flex row keeps a
+        // single inline child: flex would otherwise strip the whitespace
+        // between separate inline children, and wrapped lines hang-indent.
         const span = document.createElement('span');
         span.className = 'todo-text';
         while (cb.nextSibling) span.appendChild(cb.nextSibling);
         li.appendChild(span);
+        // Plain [ ] checkboxes get layout only — no todo-item treatment
+        // (delete button, strikethrough, visual sort).
+        if (!found) return;
+        li.classList.add('todo-item');
+        if (cb.checked) li.classList.add('checked');
         // Add delete button
         const x = document.createElement('button');
         x.className = 'todo-x';
