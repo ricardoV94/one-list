@@ -9,6 +9,18 @@
   <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
   <link rel="apple-touch-icon" href="/icon-192.png">
+  <!-- Warm up connections + start fetching the Firebase modules in parallel with
+       HTML parsing; otherwise they're only discovered after the classic scripts run. -->
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+  <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin>
+  <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js">
+  <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js">
+  <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js">
+  <!-- Show the app shell immediately for returning users instead of a blank page
+       while Firebase auth resolves; auth state correction happens once JS loads. -->
+  <script>if (localStorage.getItem('wasSignedIn')) document.documentElement.classList.add('boot-app');</script>
   <title>One List</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -83,7 +95,7 @@
     }
 
     #app { display: none; }
-    #app.cached { display: block; }
+    html.boot-app #app { display: block; }
 
     #input-area { display: none; margin-bottom: 16px; }
     #input-area.open { display: block; }
@@ -420,7 +432,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-06-01 16:14</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-06-10 08:15</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -450,10 +462,12 @@
     <div id="status"></div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"
+  <!-- defer: don't block HTML parsing; deferred scripts still run in document
+       order before the module script below, which uses marked/DOMPurify. -->
+  <script defer src="https://cdn.jsdelivr.net/npm/dompurify@3.2.5/dist/purify.min.js"
           integrity="sha384-qSFej5dZNviyoPgYJ5+Xk4bEbX8AYddxAHPuzs1aSgRiXxJ3qmyWNaPsRkpv/+x5"
           crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"
+  <script defer src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"
           integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR"
           crossorigin="anonymous"></script>
   <script type="module">
@@ -591,8 +605,16 @@
             entry.content = newContent;
             rerenderContent(contentEl, entry);
             pendingCheckboxUpdates.add(entry.id);
-            await updateDoc(doc(db, 'entries', entry.id), { content: entry.content });
-            pendingCheckboxUpdates.delete(entry.id);
+            try {
+              await updateDoc(doc(db, 'entries', entry.id), { content: entry.content });
+            } catch (err) {
+              console.error('Checkbox update failed', err);
+            } finally {
+              // Always unblock re-renders, even on a failed write, and re-merge so
+              // any snapshot skipped while the write was in flight gets applied.
+              pendingCheckboxUpdates.delete(entry.id);
+              mergeAndRender();
+            }
           }
         });
       });
@@ -624,11 +646,17 @@
             entry.content = cleaned;
             rerenderContent(contentEl, entry);
             pendingCheckboxUpdates.add(entry.id);
-            await updateDoc(doc(db, 'entries', entry.id), {
-              content: cleaned,
-              editHistory: arrayUnion({ content: oldContent, editedAt: new Date().toISOString() })
-            });
-            pendingCheckboxUpdates.delete(entry.id);
+            try {
+              await updateDoc(doc(db, 'entries', entry.id), {
+                content: cleaned,
+                editHistory: arrayUnion({ content: oldContent, editedAt: new Date().toISOString() })
+              });
+            } catch (err) {
+              console.error('Todo delete failed', err);
+            } finally {
+              pendingCheckboxUpdates.delete(entry.id);
+              mergeAndRender();
+            }
             return;
           }
           reset();
@@ -717,11 +745,17 @@
               rerenderContent(contentEl, entry);
 
               pendingCheckboxUpdates.add(entry.id);
-              await updateDoc(doc(db, 'entries', entry.id), {
-                content: newContent,
-                editHistory: arrayUnion({ content: oldContent, editedAt: new Date().toISOString() })
-              });
-              pendingCheckboxUpdates.delete(entry.id);
+              try {
+                await updateDoc(doc(db, 'entries', entry.id), {
+                  content: newContent,
+                  editHistory: arrayUnion({ content: oldContent, editedAt: new Date().toISOString() })
+                });
+              } catch (err) {
+                console.error('Todo add failed', err);
+              } finally {
+                pendingCheckboxUpdates.delete(entry.id);
+                mergeAndRender();
+              }
             }
           } else {
             const t2 = document.createElement('li');
@@ -1015,7 +1049,7 @@
       from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js';
     import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
              collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot,
-             query, orderBy, where, serverTimestamp, arrayUnion, getDoc }
+             query, orderBy, where, or, serverTimestamp, arrayUnion, getDoc }
       from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js';
 
     // ── Firebase config ──
@@ -1155,8 +1189,14 @@
 
     const strip = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
-    function searchScore(content, tokens) {
-      const lines = content.split('\n');
+    // Zone-split + stripped text per entry, memoized on content so each search
+    // keystroke doesn't re-split and re-normalize every note.
+    const searchTextCache = new Map(); // entry.id -> { content, zones, full }
+    function getSearchText(entry) {
+      const hit = searchTextCache.get(entry.id);
+      if (hit && hit.content === entry.content) return hit;
+      const text = stripImageRefs(entry.content);
+      const lines = text.split('\n');
       let inCode = false;
       const zoneTexts = { h1: '', h2: '', h3: '', body: '', code: '' };
       for (const line of lines) {
@@ -1167,14 +1207,24 @@
         else if (line.startsWith('### ')) zoneTexts.h3 += ' ' + line;
         else zoneTexts.body += ' ' + line;
       }
-      // Strip each zone once
-      const zones = [
-        { text: strip(zoneTexts.h1), w: 4 },
-        { text: strip(zoneTexts.h2), w: 3 },
-        { text: strip(zoneTexts.h3), w: 2 },
-        { text: strip(zoneTexts.body), w: 1 },
-        { text: strip(zoneTexts.code), w: 0.5 },
-      ];
+      const computed = {
+        content: entry.content,
+        // Strip each zone once
+        zones: [
+          { text: strip(zoneTexts.h1), w: 4 },
+          { text: strip(zoneTexts.h2), w: 3 },
+          { text: strip(zoneTexts.h3), w: 2 },
+          { text: strip(zoneTexts.body), w: 1 },
+          { text: strip(zoneTexts.code), w: 0.5 },
+        ],
+        full: strip(text),
+      };
+      searchTextCache.set(entry.id, computed);
+      return computed;
+    }
+
+    function searchScore(entry, tokens) {
+      const { zones, full } = getSearchText(entry);
       let score = 0;
       for (const t of tokens) {
         let best = 0;
@@ -1186,7 +1236,6 @@
       }
       // Proximity bonus for multi-token queries
       if (tokens.length > 1) {
-        const full = strip(content);
         const positions = tokens.map(t => full.indexOf(t));
         const span = Math.max(...positions) - Math.min(...positions);
         if (span < 100) score += 2;
@@ -1199,12 +1248,9 @@
     let currentFilter = '';
     let currentUserEmail = null;
     let viewMode = 'all'; // 'all' | 'shared' | 'unshared'
-    let unsubOwn = null;
-    let unsubShared = null;
-    let ownEntries = [];
-    let sharedEntries = [];
+    let unsubEntries = null;
+    let snapshotEntries = [];
     const activeEdits = new Map(); // entryId -> { value, card }
-    let renderAbort = null; // AbortController for per-render listeners
 
     // ── DOM refs ──
     const authSection = document.getElementById('auth-section');
@@ -1455,14 +1501,14 @@
     onAuthStateChanged(auth, async (user) => {
       if (user) {
         currentUserEmail = user.email;
+        localStorage.setItem('wasSignedIn', '1'); // boot-app shell on next load
         authSection.style.display = 'none';
         appSection.style.display = 'block';
         startListening();
         try {
           const allowedDoc = await getDoc(doc(db, 'config', 'allowedUsers'));
           if (allowedDoc.exists() && !allowedDoc.data().emails.includes(user.email)) {
-            if (unsubOwn) { unsubOwn(); unsubOwn = null; }
-            if (unsubShared) { unsubShared(); unsubShared = null; }
+            if (unsubEntries) { unsubEntries(); unsubEntries = null; }
             await signOut(auth);
             alert('Access denied. Your email is not authorized.');
             return;
@@ -1486,41 +1532,40 @@
         }
       } else {
         currentUserEmail = null;
+        localStorage.removeItem('wasSignedIn');
+        document.documentElement.classList.remove('boot-app');
         authSection.style.display = 'block';
         appSection.style.display = 'none';
-        if (unsubOwn) { unsubOwn(); unsubOwn = null; }
-        if (unsubShared) { unsubShared(); unsubShared = null; }
+        if (unsubEntries) { unsubEntries(); unsubEntries = null; }
       }
     });
 
-    // ── Real-time listeners (two queries merged) ──
+    // ── Real-time listener ──
     function startListening() {
-      if (unsubOwn) return;
+      if (unsubEntries) return;
 
-      const ownQuery = query(entriesRef, where('owner', '==', currentUserEmail), orderBy('sortTime', 'desc'));
-      const sharedQuery = query(entriesRef, where('shared', '==', true), orderBy('sortTime', 'desc'));
+      // ONE query (own OR shared) instead of two merged listeners: a single
+      // initial snapshot delivers own and shared notes together, so shared notes
+      // no longer pop in late when the second listener's snapshot caught up.
+      // Each or() branch unions over the same composite indexes the two old
+      // queries used (owner+sortTime, shared+sortTime).
+      const entriesQuery = query(entriesRef,
+        or(where('owner', '==', currentUserEmail), where('shared', '==', true)),
+        orderBy('sortTime', 'desc'));
 
-      // If a stream errors (dropped connection, token refresh), tear both down and
+      // If the stream errors (dropped connection, token refresh), tear it down and
       // re-subscribe so the app self-heals instead of hanging until a manual refresh.
       const onErr = (err) => {
         console.error('Firestore listener error — reconnecting', err);
-        if (unsubOwn) { unsubOwn(); unsubOwn = null; }
-        if (unsubShared) { unsubShared(); unsubShared = null; }
+        if (unsubEntries) { unsubEntries(); unsubEntries = null; }
+        if (err && err.code === 'failed-precondition') return; // config error; retrying would loop
         if (currentUserEmail) setTimeout(startListening, 2000);
       };
 
-      unsubOwn = onSnapshot(ownQuery, { includeMetadataChanges: true }, (snapshot) => {
-        ownEntries = snapshot.docs.map(d => ({ id: d.id, ...d.data(), _pending: d.metadata.hasPendingWrites }));
+      unsubEntries = onSnapshot(entriesQuery, { includeMetadataChanges: true }, (snapshot) => {
+        snapshotEntries = snapshot.docs.map(d => ({ id: d.id, ...d.data(), _pending: d.metadata.hasPendingWrites }));
         mergeAndRender();
-        const hasPending = snapshot.metadata.hasPendingWrites;
-        statusEl.textContent = hasPending ? 'Saving...' : '';
-      }, onErr);
-
-      unsubShared = onSnapshot(sharedQuery, { includeMetadataChanges: true }, (snapshot) => {
-        sharedEntries = snapshot.docs.map(d => ({ id: d.id, ...d.data(), _pending: d.metadata.hasPendingWrites }));
-        mergeAndRender();
-        const hasPending = snapshot.metadata.hasPendingWrites;
-        statusEl.textContent = hasPending ? 'Saving...' : '';
+        statusEl.textContent = snapshot.metadata.hasPendingWrites ? 'Saving...' : '';
       }, onErr);
     }
 
@@ -1530,10 +1575,7 @@
       renderQueued = true;
       queueMicrotask(() => {
         renderQueued = false;
-        const map = new Map();
-        for (const e of ownEntries) map.set(e.id, e);
-        for (const e of sharedEntries) map.set(e.id, e);
-        allEntries = [...map.values()].sort((a, b) => {
+        allEntries = [...snapshotEntries].sort((a, b) => {
           // A pending write with no resolved sortTime is a just-bumped/created note;
           // float it to the top instead of letting null sort it to the bottom (which
           // caused the bump-to-bottom-then-snap-to-top jump).
@@ -1546,7 +1588,19 @@
     }
 
     // ── Render ──
-    const cardCache = new Map(); // entry.id -> { card, entry, contentEl, dateText, ts, versions, buildViewMode, buildEditMode }
+    const cardCache = new Map(); // entry.id -> { card, entry, contentEl, dateText, ts, versions, buildViewMode, buildEditMode, closeHistoryIfOpen }
+
+    // One delegated Escape handler for all cards. (Per-card document listeners
+    // were tied to a per-render AbortController and died on the next render
+    // while the card itself stayed cached.)
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      let closed = false;
+      for (const c of cardCache.values()) {
+        if (c.closeHistoryIfOpen()) closed = true;
+      }
+      if (closed) e.preventDefault();
+    });
 
     function buildCard(initialEntry) {
       let entry = initialEntry;
@@ -1731,12 +1785,6 @@
         actions.style.display = 'none';
         updateHistoryView();
       };
-      if (hasHistory) {
-        document.addEventListener('keydown', (e) => {
-          if (e.key === 'Escape' && historyOpen) { e.preventDefault(); closeHistory(); }
-        }, { signal: renderAbort.signal });
-      }
-
       prevBtn.addEventListener('click', () => { if (versionIdx > 0) { versionIdx--; updateHistoryView(); } });
       nextBtn.addEventListener('click', () => { if (versionIdx < versions.length - 1) { versionIdx++; updateHistoryView(); } });
 
@@ -2009,17 +2057,23 @@
       card.appendChild(actions);
       card.appendChild(histNav);
 
-      return { card, entry, contentEl, dateText, ts, versions, buildViewMode, buildEditMode };
+      return {
+        card, entry, contentEl, dateText, ts, versions, buildViewMode, buildEditMode,
+        closeHistoryIfOpen: () => { if (!historyOpen) return false; closeHistory(); return true; },
+      };
     }
 
+    let renderChunkScheduled = false;
     function renderEntries() {
-      if (renderAbort) renderAbort.abort();
-      renderAbort = new AbortController();
       const tokens = strip(currentFilter).split(/\s+/).filter(Boolean);
 
-      const visibleIds = new Set();
       const orderedCards = [];
       const cardScores = [];
+      // Building a card parses markdown; budget that work so a large cold render
+      // paints the first screenful now and streams the rest in following frames.
+      const chunkStart = performance.now();
+      let builtThisPass = 0;
+      let truncated = false;
 
       for (let entry of allEntries) {
         // View mode filter
@@ -2027,12 +2081,10 @@
         if (viewMode === 'unshared' && (!isOwn || entry.shared)) continue;
         if (viewMode === 'shared' && !entry.shared) continue;
         if (tokens.length) {
-          const score = searchScore(stripImageRefs(entry.content), tokens);
+          const score = searchScore(entry, tokens);
           if (!score) continue;
           cardScores.push(score);
         }
-
-        visibleIds.add(entry.id);
 
         // Reuse existing DOM for entries being edited
         const edit = activeEdits.get(entry.id);
@@ -2076,7 +2128,15 @@
           }
         }
 
+        // Cache miss: stop here once over budget (search renders stay complete
+        // because relevance sorting needs every match; those are mostly cached).
+        if (!tokens.length && builtThisPass > 0 && performance.now() - chunkStart > 40) {
+          truncated = true;
+          break;
+        }
+
         const result = buildCard(entry);
+        builtThisPass++;
         cardCache.set(entry.id, result);
 
         if (activeEdits.has(entry.id)) {
@@ -2095,9 +2155,16 @@
         for (const item of indexed) orderedCards.push(item.card);
       }
 
-      // Remove cards for entries no longer visible
-      for (const [id] of cardCache) {
-        if (!visibleIds.has(id)) cardCache.delete(id);
+      // Drop caches only for entries that no longer exist; cards merely filtered
+      // out (search/view mode) stay cached so toggling filters back is instant.
+      if (!truncated) {
+        const liveIds = new Set(allEntries.map(e => e.id));
+        for (const [id] of cardCache) {
+          if (!liveIds.has(id)) cardCache.delete(id);
+        }
+        for (const [id] of searchTextCache) {
+          if (!liveIds.has(id)) searchTextCache.delete(id);
+        }
       }
 
       // FLIP animation: record old positions
@@ -2140,6 +2207,12 @@
             }, { once: true });
           });
         }
+      }
+
+      // Continue building the remaining cards next frame
+      if (truncated && !renderChunkScheduled) {
+        renderChunkScheduled = true;
+        requestAnimationFrame(() => { renderChunkScheduled = false; renderEntries(); });
       }
     }
 

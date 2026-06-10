@@ -1,4 +1,4 @@
-const CACHE_NAME = 'onelist-2026-06-01 16:14';
+const CACHE_NAME = 'onelist-2026-06-10 08:15';
 const SHELL_FILES = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 const CDN_FILES = [
   'https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js',
@@ -32,8 +32,10 @@ self.addEventListener('fetch', (e) => {
       caches.match(e.request).then(r => {
         if (r) return r;
         return fetch(e.request).then(resp => {
-          const clone = resp.clone();
-          caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+          if (resp.ok) {
+            const clone = resp.clone();
+            caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+          }
           return resp;
         });
       }).catch(() => caches.match(e.request))
@@ -45,8 +47,10 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     caches.match(e.request).then(cached => {
       const net = fetch(e.request).then(resp => {
-        const clone = resp.clone();
-        caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+        if (resp.ok) {
+          const clone = resp.clone();
+          caches.open(CACHE_NAME).then(c => c.put(e.request, clone));
+        }
         return resp;
       });
       if (cached) {

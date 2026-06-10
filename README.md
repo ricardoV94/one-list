@@ -12,7 +12,7 @@ Built as a single-page PWA with Firebase — no build step, no dependencies beyo
 - **Sharing** — toggle entries as shared; collaborators can view and edit shared entries
 - **Search & filter** — full-text search and view mode cycling (all / shared / unshared)
 - **Markdown** — entries render as Markdown with links, code blocks, lists, etc.; toolbar buttons for bullet lists and checkboxes
-- **Offline-first** — Firestore persistent cache + service worker; works without connectivity
+- **Offline-first** — Firestore persistent cache + service worker; works without connectivity. Uses the multi-tab cache manager (`persistentMultipleTabManager`) so concurrent tabs share one cache/connection and a crashed PWA instance can't hold the persistence lease — the standard choice across the one_list / recipes / money apps
 - **Dark mode** — follows system preference
 - **PWA** — installable on mobile and desktop
 
