@@ -432,7 +432,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-06-10 08:15</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-06-10 10:09</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -1514,6 +1514,16 @@
             return;
           }
         } catch (e) {
+          // Rules also deny this read to non-allowlisted users (fail-closed), so
+          // permission-denied IS the "not authorized" signal — same outcome as the
+          // explicit check above. Anything else (offline = 'unavailable', transient
+          // errors) skips the check; rules still protect the data either way.
+          if (e && e.code === 'permission-denied') {
+            if (unsubEntries) { unsubEntries(); unsubEntries = null; }
+            await signOut(auth);
+            alert('Access denied. Your email is not authorized.');
+            return;
+          }
         }
 
         // ── Handle Web Share Target ──
@@ -1555,10 +1565,18 @@
 
       // If the stream errors (dropped connection, token refresh), tear it down and
       // re-subscribe so the app self-heals instead of hanging until a manual refresh.
+      // Permanent errors must NOT retry: failed-precondition = missing index;
+      // permission-denied = rules reject the query — notably every non-allowlisted
+      // sign-in, since the allowlist getDoc in onAuthStateChanged is itself
+      // permission-denied for them (swallowed by its offline catch), so no sign-out
+      // interrupts the would-be retry loop. Surface the state instead of spinning.
       const onErr = (err) => {
         console.error('Firestore listener error — reconnecting', err);
         if (unsubEntries) { unsubEntries(); unsubEntries = null; }
-        if (err && err.code === 'failed-precondition') return; // config error; retrying would loop
+        if (err && (err.code === 'failed-precondition' || err.code === 'permission-denied')) {
+          statusEl.textContent = 'Sync error: ' + err.code;
+          return;
+        }
         if (currentUserEmail) setTimeout(startListening, 2000);
       };
 
