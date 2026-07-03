@@ -227,6 +227,9 @@
     .entry-content li.todo-item + li.todo-item { border-top: 1px solid #eee; }
     .history-viewing .entry-content li.todo-item + li.todo-item { border-top: none; }
     .history-viewing .entry-content li.todo-item { padding: 0; }
+    .entry-content li.todo-item:not(.dragging) { transition: transform 0.12s; }
+    /* Empty-list placeholder (a lone "- ( )"): the list shows only its add trigger */
+    .entry-content li.todo-item.todo-placeholder { display: none; }
     .entry-content li.todo-item input[type="checkbox"] { border-radius: 50%; margin-right: 6px; }
     .entry-content li.todo-item .todo-text { flex: 1; }
     .entry-content li.todo-item.checked .todo-text { color: #aaa; text-decoration: line-through; }
@@ -242,28 +245,48 @@
       background: #d4728c; color: #fff; font-weight: bold;
       padding-bottom: 2px;
     }
+    .entry-content li.todo-item .todo-grip, .todo-add-inline .todo-grip {
+      border: none; background: none; cursor: grab; padding: 0;
+      color: #ccc; flex-shrink: 0; touch-action: none;
+      width: 22px; height: 22px; display: flex;
+      align-items: center; justify-content: center; box-sizing: border-box;
+      -webkit-user-select: none; user-select: none;
+    }
+    .entry-content li.todo-item.dragging, .entry-content .todo-add-inline.dragging {
+      background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+      border-radius: 8px; position: relative; z-index: 10;
+      border-top-color: transparent;
+    }
+    .entry-content li.dragging .todo-grip { cursor: grabbing; }
     .todo-add-trigger {
       list-style: none; margin-left: -24px; display: flex; align-items: center;
-      padding: 5px 0; cursor: pointer; color: #bbb; font-size: 0.9rem; gap: 6px;
+      padding: 5px 0 5px 22px; cursor: pointer; color: #bbb; gap: 6px;
       transition: color 0.12s; border-top: 1px solid #eee;
     }
     .todo-add-trigger:hover { color: #7bae7f; }
     .todo-add-trigger .plus-icon {
       width: 18px; height: 18px; display: flex; align-items: center;
-      justify-content: center; font-size: 1.1rem; font-weight: 300;
+      justify-content: center; flex-shrink: 0; line-height: 0;
+      position: relative; top: 2px;
     }
+    /* Styled as a todo row being typed into: same padding/checkbox/alignment
+       as li.todo-item so the new item doesn't shift when saved */
     .todo-add-inline {
       list-style: none; margin-left: -24px; display: flex; align-items: center;
-      gap: 6px; padding: 4px 0; border-top: 1px solid #eee;
+      padding: 5px 0; border-top: 1px solid #eee;
     }
-    .todo-add-inline input {
-      flex: 1; padding: 6px 8px; font-size: 0.9rem; font-family: inherit;
-      border: 1px solid #ddd; border-radius: 5px; outline: none; background: #fafafa;
+    .todo-add-inline input[type="checkbox"] { border-radius: 50%; }
+    .todo-add-inline:has(input[type="checkbox"]:checked) input[type="text"] { color: #aaa; text-decoration: line-through; }
+    .todo-add-inline input[type="text"] {
+      flex: 1; padding: 0; font: inherit; color: inherit;
+      border: none; outline: none; background: none;
     }
-    .todo-add-inline input:focus {
-      border-color: #7bae7f; box-shadow: 0 0 0 2px rgba(123,174,127,0.2); background: #fff;
+    .todo-add-cancel {
+      background: none; border: none; cursor: pointer; padding: 0;
+      color: #222; line-height: 0; flex-shrink: 0;
+      width: 22px; height: 22px; display: flex;
+      align-items: center; justify-content: center;
     }
-    .todo-add-inline input::placeholder { color: #bbb; }
 
     .entry-actions {
       display: flex;
@@ -387,6 +410,7 @@
     .dark #new-entry { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
     .dark #search-input { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
     .dark #search-clear { color: #e0e0e0; }
+    .dark .todo-add-cancel { color: #e0e0e0; }
     .dark #search-area.open { background: #1a1a1a; }
     .dark .header-icons button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
     .dark .entry-card { background: #2a2a2a; border-color: #444; }
@@ -404,12 +428,13 @@
     .dark .history-nav button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
     .dark .edit-textarea { background: #2a2a2a; color: #e0e0e0; border-color: #7bae7f; }
     .dark .entry-content li.todo-item + li.todo-item { border-color: #383838; }
+    .dark .entry-content li.todo-item .todo-grip, .dark .todo-add-inline .todo-grip { color: #666; }
+    .dark .entry-content li.todo-item.dragging, .dark .entry-content .todo-add-inline.dragging { background: #2a2a2a; border-top-color: transparent; }
     .dark .entry-content li.todo-item .todo-x { color: #666; }
     .dark .entry-content li.todo-item .todo-x:hover { color: #d4728c; }
     .dark .todo-add-trigger { border-color: #383838; color: #555; }
     .dark .todo-add-trigger:hover { color: #7bae7f; }
     .dark .todo-add-inline { border-color: #383838; }
-    .dark .todo-add-inline input { background: #333; color: #e0e0e0; border-color: #555; }
     .dark .view-popover { background: #2a2a2a; border-color: #444; }
     .dark .view-popover button { background: #2a2a2a; color: #e0e0e0; }
     .dark .view-popover button:hover { background: #333; }
@@ -432,7 +457,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-06-10 10:09</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-07-03 15:59</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -581,13 +606,21 @@
     function attachCheckboxHandlers(contentEl, entry) {
       applyTodoMarkup(contentEl);
       attachCodeCopyButtons(contentEl);
-      // Stamp each checkbox with its markdown index BEFORE visual sort
+      // A lone, empty - ( ) is an empty list's placeholder: hidden, so the
+      // list renders as just its "+ Add item" trigger. It stays in the DOM to
+      // keep checkbox <-> markdown indices aligned.
+      contentEl.querySelectorAll('ul').forEach(ul => {
+        const todos = ul.querySelectorAll(':scope > li.todo-item');
+        if (todos.length === 1 && !todos[0].querySelector(':scope > .todo-text')?.textContent.trim()) {
+          todos[0].classList.add('todo-placeholder');
+        }
+      });
+      // Stamp each checkbox with its markdown index (DOM order matches markdown order)
       contentEl.querySelectorAll('input[type="checkbox"]').forEach((cb, i) => {
         cb.dataset.mdIdx = i;
       });
-      // Visual sort: move checked todo items to bottom of each consecutive run (DOM only)
-      contentEl.querySelectorAll('ul').forEach(sortTodoItemsInUl);
       attachTodoAddTriggers(contentEl, entry);
+      attachTodoDragHandles(contentEl, entry);
 
       contentEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
         const mdIdx = parseInt(cb.dataset.mdIdx);
@@ -633,16 +666,24 @@
           e.stopPropagation();
           if (pending) {
             reset();
-            const cb = x.closest('li.todo-item')?.querySelector('input[type="checkbox"]');
+            const li = x.closest('li.todo-item');
+            const cb = li?.querySelector('input[type="checkbox"]');
             if (!cb) return;
             const mdIdx = parseInt(cb.dataset.mdIdx);
+            // Deleting a list's last item leaves an empty - ( ) placeholder
+            // line, so the list (and its add trigger) survives
+            const lastOfList = li.parentElement.querySelectorAll(':scope > li.todo-item').length === 1;
             let count = 0;
             const oldContent = entry.content;
-            const newContent = entry.content.replace(CB_RE, (match) => {
-              if (count++ === mdIdx) return '\x00DELETE\x00';
+            const newContent = entry.content.replace(CB_RE, (match, prefix) => {
+              if (count++ === mdIdx) return prefix + '\x00DELETE\x00';
               return match;
             });
-            const cleaned = newContent.split('\n').filter(l => !l.includes('\x00DELETE\x00')).join('\n');
+            const cleaned = newContent.split('\n').map(l => {
+              const i = l.indexOf('\x00DELETE\x00');
+              if (i === -1) return l;
+              return lastOfList ? l.slice(0, i) + '( )' : null;
+            }).filter(l => l !== null).join('\n');
             entry.content = cleaned;
             rerenderContent(contentEl, entry);
             pendingCheckboxUpdates.add(entry.id);
@@ -668,23 +709,167 @@
       });
     }
 
-    // Visual-only sort: within each <ul>, move checked .todo-item to bottom
-    // of each consecutive run of .todo-item elements. Markdown is untouched.
-    function sortTodoItemsInUl(ul) {
-      const children = [...ul.children];
-      let run = [];
-      const runs = [];
-      for (const child of children) {
-        if (child.classList?.contains('todo-item')) run.push(child);
-        else { if (run.length) { runs.push(run); run = []; } }
+    // Drag-to-reorder: grip handle on each todo item. Items can be dragged
+    // within their consecutive run of sibling todo items. Reordering rewrites
+    // the markdown lines but, like checkbox toggles, adds no editHistory record.
+    function attachTodoDragHandles(contentEl, entry) {
+      contentEl.querySelectorAll('li.todo-item').forEach(li => {
+        const grip = document.createElement('button');
+        grip.type = 'button';
+        grip.className = 'todo-grip';
+        grip.innerHTML = ICON.grip;
+        grip.title = 'Drag to reorder';
+        grip.addEventListener('contextmenu', e => e.preventDefault());
+        li.insertBefore(grip, li.querySelector(':scope > input[type="checkbox"]'));
+        grip.addEventListener('pointerdown', e => startTodoDrag(e, grip, li, contentEl, entry));
+      });
+    }
+
+    // During the drag everything moves via CSS transforms only — no DOM
+    // reparenting (which would release pointer capture). The real reorder
+    // happens once, on drop.
+    // onDrop (optional) replaces the default markdown commit: it receives the
+    // new order (or null if unchanged) plus the DOM anchor after the run. Used
+    // by the add-item draft row, which has no markdown line to reorder yet.
+    function startTodoDrag(e, grip, li, contentEl, entry, onDrop) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      const ul = li.parentElement;
+      // Consecutive run of sibling todo items containing li (li itself counts
+      // as a member even when it isn't a todo item, e.g. the add-item draft)
+      let run = [], cur = [];
+      for (const child of ul.children) {
+        if (child.classList.contains('todo-item') || child === li) cur.push(child);
+        else { if (cur.includes(li)) break; cur = []; }
       }
-      if (run.length) runs.push(run);
-      for (const group of runs) {
-        const unchecked = group.filter(li => !li.classList.contains('checked'));
-        const checked = group.filter(li => li.classList.contains('checked'));
-        const sorted = [...unchecked, ...checked];
-        const anchor = group[group.length - 1].nextSibling;
-        sorted.forEach(li => ul.insertBefore(li, anchor));
+      if (cur.includes(li)) run = cur;
+      if (run.length < 2) return;
+      e.preventDefault();
+      grip.setPointerCapture(e.pointerId);
+
+      const origIdx = run.indexOf(li);
+      const others = run.filter(item => item !== li);
+      // First node after the run; stable during the drag (transforms only)
+      const anchor = run[run.length - 1].nextSibling;
+      // Document-relative geometry, cached before any transforms apply
+      const mids = others.map(o => {
+        const r = o.getBoundingClientRect();
+        return r.top + r.height / 2 + window.scrollY;
+      });
+      const liRect = li.getBoundingClientRect();
+      const rowShift = liRect.height + 1; // +1 for the border-top separator
+      const minDy = run[0].getBoundingClientRect().top - liRect.top;
+      const maxDy = run[run.length - 1].getBoundingClientRect().bottom - liRect.bottom;
+      const startPageY = e.clientY + window.scrollY;
+      let dragging = false;
+      let lastClientY = e.clientY;
+      let curIdx = origIdx;
+      let rafId = null;
+
+      const update = () => {
+        const pageY = lastClientY + window.scrollY;
+        const dy = Math.max(minDy, Math.min(maxDy, pageY - startPageY));
+        li.style.transform = `translateY(${dy}px)`;
+        const idx = mids.filter(m => m < pageY).length;
+        if (idx !== curIdx) {
+          curIdx = idx;
+          others.forEach((o, i) => {
+            if (i >= idx && i < origIdx) o.style.transform = `translateY(${rowShift}px)`;
+            else if (i >= origIdx && i < idx) o.style.transform = `translateY(${-rowShift}px)`;
+            else o.style.transform = '';
+          });
+        }
+      };
+      // rAF loop so edge auto-scroll keeps going while the pointer is stationary
+      const tick = () => {
+        const margin = 60, speed = 8;
+        if (lastClientY < margin) window.scrollBy(0, -speed);
+        else if (lastClientY > window.innerHeight - margin) window.scrollBy(0, speed);
+        update();
+        rafId = requestAnimationFrame(tick);
+      };
+      const onMove = (ev) => {
+        lastClientY = ev.clientY;
+        if (!dragging) {
+          if (Math.abs(ev.clientY - e.clientY) < 4) return;
+          dragging = true;
+          li.classList.add('dragging');
+          rafId = requestAnimationFrame(tick);
+        }
+        update();
+      };
+      const finish = (commit) => {
+        grip.removeEventListener('pointermove', onMove);
+        grip.removeEventListener('pointerup', onUp);
+        grip.removeEventListener('pointercancel', onCancel);
+        if (rafId) cancelAnimationFrame(rafId);
+        li.classList.remove('dragging');
+        if (!dragging) return;
+        const newOrder = (commit && curIdx !== origIdx)
+          ? [...others.slice(0, curIdx), li, ...others.slice(curIdx)] : null;
+        if (onDrop) {
+          run.forEach(item => { item.style.transform = ''; });
+          onDrop(newOrder, anchor);
+        } else if (newOrder) {
+          commitTodoReorder(contentEl, entry, newOrder);
+        } else {
+          run.forEach(item => { item.style.transform = ''; });
+        }
+      };
+      const onUp = () => finish(true);
+      const onCancel = () => finish(false);
+      grip.addEventListener('pointermove', onMove);
+      grip.addEventListener('pointerup', onUp);
+      grip.addEventListener('pointercancel', onCancel);
+    }
+
+    // Rewrite the markdown so the run's line blocks (each todo line plus its
+    // more-indented continuation/nested lines) follow the new DOM order.
+    async function commitTodoReorder(contentEl, entry, newOrder) {
+      const lines = entry.content.split('\n');
+      // Line number of each checkbox, in markdown order (matches data-md-idx)
+      const cbLines = [];
+      for (let i = 0; i < lines.length; i++) {
+        CB_RE.lastIndex = 0;
+        if (CB_RE.test(lines[i])) cbLines.push(i);
+      }
+      CB_RE.lastIndex = 0;
+      const indentOf = l => l.match(/^\s*/)[0].length;
+      const blocks = newOrder.map(item => {
+        const cb = item.querySelector(':scope > input[type="checkbox"]');
+        const start = cbLines[parseInt(cb?.dataset.mdIdx)];
+        if (start === undefined) return null;
+        const indent = indentOf(lines[start]);
+        let end = start;
+        while (end + 1 < lines.length && lines[end + 1].trim() && indentOf(lines[end + 1]) > indent) end++;
+        return { start, end };
+      });
+      // The blocks must exactly tile a contiguous region, else bail out
+      let newContent = null;
+      if (blocks.every(Boolean)) {
+        const sorted = [...blocks].sort((a, b) => a.start - b.start);
+        const contiguous = sorted.every((b, i) => i === 0 || b.start === sorted[i - 1].end + 1);
+        if (contiguous) {
+          newContent = [
+            ...lines.slice(0, sorted[0].start),
+            ...blocks.flatMap(b => lines.slice(b.start, b.end + 1)),
+            ...lines.slice(sorted[sorted.length - 1].end + 1),
+          ].join('\n');
+        }
+      }
+      if (!newContent || newContent === entry.content) {
+        rerenderContent(contentEl, entry); // snap DOM back to markdown order
+        return;
+      }
+      entry.content = newContent;
+      rerenderContent(contentEl, entry);
+      pendingCheckboxUpdates.add(entry.id);
+      try {
+        await updateDoc(doc(db, 'entries', entry.id), { content: newContent });
+      } catch (err) {
+        console.error('Todo reorder failed', err);
+      } finally {
+        pendingCheckboxUpdates.delete(entry.id);
+        mergeAndRender();
       }
     }
 
@@ -695,7 +880,7 @@
         if (ul.querySelector('.todo-add-trigger, .todo-add-inline')) return;
         const trigger = document.createElement('li');
         trigger.className = 'todo-add-trigger';
-        trigger.innerHTML = '<span class="plus-icon">+</span> <span>Add item</span>';
+        trigger.innerHTML = '<span class="plus-icon">' + ICON.plus + '</span> <span>Add item</span>';
         setupTodoAddTrigger(trigger, ul, contentEl, entry);
         ul.appendChild(trigger);
       });
@@ -705,41 +890,97 @@
       trigger.addEventListener('click', () => {
         const row = document.createElement('li');
         row.className = 'todo-add-inline';
-        row.innerHTML = '<input type="text" placeholder="Add item...">';
+        row.innerHTML = '<button type="button" class="todo-grip" title="Drag to reorder">' + ICON.grip + '</button>'
+          + '<input type="checkbox">'
+          + '<input type="text">'
+          + '<button type="button" class="todo-add-cancel" title="Cancel" aria-label="Cancel">'
+          + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>'
+          + '</button>';
         trigger.replaceWith(row);
-        const input = row.querySelector('input');
+        const circle = row.querySelector('input[type="checkbox"]');
+        const input = row.querySelector('input[type="text"]');
+        // Discard hint lives in the card's actions row, like in regular edit;
+        // appended only when shown so it doesn't add flex-gap space meanwhile
+        const escHint = document.createElement('span');
+        escHint.className = 'esc-hint';
+        const actionsEl = contentEl.closest('.entry-card')?.querySelector('.entry-actions');
         input.focus();
+        // Toggling the circle must not steal focus from the input (pointerdown's
+        // default), or the blur handler would commit the item mid-typing
+        circle.addEventListener('pointerdown', (e) => e.preventDefault());
+        circle.addEventListener('click', () => input.focus());
+        // pointerdown (not click) so the input never blurs first; preventDefault
+        // keeps focus in place while we tear the row down ourselves
+        row.querySelector('.todo-add-cancel').addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          input.value = '';
+          commit();
+        });
+        // Draggable while editing: the drop only moves the row in the DOM —
+        // commit() reads the row's final neighbors to place the markdown line
+        const rowGrip = row.querySelector('.todo-grip');
+        rowGrip.addEventListener('contextmenu', (e) => e.preventDefault());
+        rowGrip.addEventListener('pointerdown', (e) => {
+          clearTimeout(blurTimer);
+          startTodoDrag(e, rowGrip, row, contentEl, entry, (newOrder, anchor) => {
+            if (newOrder) newOrder.forEach(el => ul.insertBefore(el, anchor));
+            input.focus();
+          });
+        });
 
         let committed = false;
         const commit = async () => {
           if (committed) return;
+          escHint.remove();
           const text = input.value.trim();
           if (text) {
             committed = true;
-            // Add to markdown: find last todo line in this ul section and insert after it
-            const allCbs = [...contentEl.querySelectorAll('input[type="checkbox"]')];
-            const todoLis = [...ul.querySelectorAll('li.todo-item')];
-            const lastTodoLi = todoLis[todoLis.length - 1];
-            const lastCb = lastTodoLi?.querySelector('input[type="checkbox"]');
-            const lastIdx = lastCb ? allCbs.indexOf(lastCb) : -1;
-
-            // Find the line index in markdown
-            let count = 0;
-            let insertAfterLine = -1;
+            // Insert relative to the row's immediate neighbors, since the row
+            // may have been dragged into position while editing: after the
+            // previous todo item's block, or before the next one's line
+            const isTodo = el => el?.classList?.contains('todo-item');
+            const prevLi = isTodo(row.previousElementSibling) ? row.previousElementSibling : null;
+            const nextLi = !prevLi && isTodo(row.nextElementSibling) ? row.nextElementSibling : null;
             const lines = entry.content.split('\n');
+            const cbLines = [];
             for (let i = 0; i < lines.length; i++) {
-              if (CB_RE.test(lines[i])) {
-                CB_RE.lastIndex = 0;
-                if (count === lastIdx) { insertAfterLine = i; break; }
-                count++;
-              }
+              CB_RE.lastIndex = 0;
+              if (CB_RE.test(lines[i])) cbLines.push(i);
             }
             CB_RE.lastIndex = 0;
+            const indentOf = l => l.match(/^\s*/)[0].length;
+            const lineOf = item => cbLines[parseInt(item.querySelector(':scope > input[type="checkbox"]')?.dataset.mdIdx)];
 
-            if (insertAfterLine >= 0) {
+            const placeholder = ul.querySelector(':scope > li.todo-item.todo-placeholder');
+            let insertAt = -1, indent = '', replaceCount = 0;
+            if (placeholder) {
+              // Empty list: the new item takes the placeholder line's spot
+              const start = lineOf(placeholder);
+              if (start !== undefined) {
+                indent = lines[start].match(/^(\s*)/)[1];
+                insertAt = start;
+                replaceCount = 1;
+              }
+            } else if (prevLi) {
+              const start = lineOf(prevLi);
+              if (start !== undefined) {
+                indent = lines[start].match(/^(\s*)/)[1];
+                // Skip past the previous item's nested/continuation block
+                let end = start;
+                while (end + 1 < lines.length && lines[end + 1].trim() && indentOf(lines[end + 1]) > indent.length) end++;
+                insertAt = end + 1;
+              }
+            } else if (nextLi) {
+              const start = lineOf(nextLi);
+              if (start !== undefined) {
+                indent = lines[start].match(/^(\s*)/)[1];
+                insertAt = start;
+              }
+            }
+
+            if (insertAt >= 0) {
               const oldContent = entry.content;
-              const indent = lines[insertAfterLine].match(/^(\s*)/)[1];
-              lines.splice(insertAfterLine + 1, 0, indent + '- ( ) ' + text);
+              lines.splice(insertAt, replaceCount, indent + '- (' + (circle.checked ? 'x' : ' ') + ') ' + text);
               const newContent = lines.join('\n');
               entry.content = newContent;
               rerenderContent(contentEl, entry);
@@ -760,17 +1001,35 @@
           } else {
             const t2 = document.createElement('li');
             t2.className = 'todo-add-trigger';
-            t2.innerHTML = '<span class="plus-icon">+</span> <span>Add item</span>';
-            row.replaceWith(t2);
+            t2.innerHTML = '<span class="plus-icon">' + ICON.plus + '</span> <span>Add item</span>';
+            // Back to the end of the list — the row may have been dragged away
+            row.remove();
+            ul.appendChild(t2);
             setupTodoAddTrigger(t2, ul, contentEl, entry);
           }
         };
 
+        let escPending = false;
         input.addEventListener('keydown', (e) => {
           if (e.key === 'Enter') { e.preventDefault(); commit(); }
-          if (e.key === 'Escape') { input.value = ''; commit(); }
+          if (e.key === 'Escape') {
+            if (!input.value.trim() || escPending) { input.value = ''; commit(); }
+            else {
+              escPending = true;
+              escHint.textContent = 'Esc again to discard';
+              if (actionsEl && !escHint.isConnected) {
+                // After the share button, i.e. before the date spacer that
+                // starts the right-aligned group — same spot as in edit mode
+                actionsEl.insertBefore(escHint, actionsEl.querySelector(':scope > .entry-date'));
+              }
+              setTimeout(() => { escPending = false; escHint.remove(); }, 3000);
+            }
+          }
         });
-        input.addEventListener('blur', () => setTimeout(commit, 150));
+        // Cancelable so a quick circle-toggle round trip doesn't commit
+        let blurTimer;
+        input.addEventListener('blur', () => { blurTimer = setTimeout(commit, 150); });
+        input.addEventListener('focus', () => clearTimeout(blurTimer));
       });
     }
     function handleListContinuation(e, textarea) {
@@ -820,11 +1079,11 @@
     }
 
     const LIST_MODES = [
+      { id: 'plain',    label: 'Plain text',      prefix: '' },
       { id: 'todo',     label: '- ( ) Todo',     prefix: '- ( ) ' },
       { id: 'checkbox', label: '- [ ] Checkbox',  prefix: '- [ ] ' },
       { id: 'bullet',   label: '- Bullet',        prefix: '- ' },
       { id: 'numbered', label: '1. Numbered',     prefix: null },
-      { id: 'plain',    label: 'Plain text',      prefix: '' },
     ];
     const STRIP_LIST_RE = /^(\s*)(?:[-*]\s+\([ xX]\)\s?|[-*]\s+\[[ xX]\]\s?|[-*]\s+|\d+\.\s+)/;
 
@@ -873,44 +1132,42 @@
       textarea.focus();
     }
 
-    function makeCycleButton(textarea) {
+    // Generic cycle button: a single button that advances through `modes` on
+    // click, plus a hover/long-press popover to jump straight to any mode. The
+    // list-style and text-format buttons are both built on this.
+    //   detect(textarea)   -> id of the mode currently active at the cursor
+    //   apply(textarea, id, current) -> mutate the textarea to that mode
+    //   iconFor(id) / labelFor(mode) -> popover + button glyphs/titles
+    function makeCyclePopoverButton(textarea, { modes, detect, apply, iconFor, labelFor }) {
       const wrapper = document.createElement('div');
       wrapper.className = 'cycle-wrapper';
       const btn = document.createElement('button');
+      btn.type = 'button';
       btn.style.cssText = 'padding:6px 10px;font-size:0.85rem;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;min-height:36px;display:flex;align-items:center;justify-content:center;';
       const popover = document.createElement('div');
       popover.className = 'cycle-popover';
       wrapper.append(btn, popover);
 
-      function getSelected() {
-        const { selectionStart, selectionEnd, value } = textarea;
-        const fullStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
-        const rawEnd = selectionStart === selectionEnd
-          ? value.indexOf('\n', selectionStart)
-          : value.indexOf('\n', selectionEnd);
-        const fullEnd = rawEnd === -1 ? value.length : rawEnd;
-        return value.slice(fullStart, fullEnd).split('\n');
-      }
+      const nextOf = (id) => modes[(modes.findIndex(m => m.id === id) + 1) % modes.length];
 
       function updateBtn() {
-        const current = detectListMode(getSelected());
-        const idx = LIST_MODES.findIndex(m => m.id === current);
-        const nextIdx = (idx + 1) % LIST_MODES.length;
-        btn.innerHTML = listModeIcon(LIST_MODES[nextIdx].id);
-        btn.title = LIST_MODES[nextIdx].label;
+        const next = nextOf(detect(textarea));
+        btn.innerHTML = iconFor(next.id);
+        btn.title = labelFor(next);
       }
 
       function buildPopover() {
-        const current = detectListMode(getSelected());
+        const current = detect(textarea);
         popover.innerHTML = '';
-        LIST_MODES.forEach(m => {
+        modes.forEach(m => {
           const b = document.createElement('button');
-          b.innerHTML = listModeIcon(m.id);
-          b.title = m.label;
+          b.type = 'button';
+          b.innerHTML = iconFor(m.id);
+          b.title = labelFor(m);
           if (m.id === current) b.classList.add('active');
           b.addEventListener('click', (e) => {
             e.stopPropagation();
-            applyListMode(textarea, m.id);
+            apply(textarea, m.id, current);
             updateBtn();
             popover.classList.remove('show');
           });
@@ -921,10 +1178,8 @@
       btn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const current = detectListMode(getSelected());
-        const idx = LIST_MODES.findIndex(m => m.id === current);
-        const nextIdx = (idx + 1) % LIST_MODES.length;
-        applyListMode(textarea, LIST_MODES[nextIdx].id);
+        const current = detect(textarea);
+        apply(textarea, nextOf(current).id, current);
         updateBtn();
       });
 
@@ -967,6 +1222,254 @@
       setTimeout(updateBtn, 0);
 
       return wrapper;
+    }
+
+    function selectedLines(textarea) {
+      const { selectionStart, selectionEnd, value } = textarea;
+      const fullStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+      const rawEnd = selectionStart === selectionEnd
+        ? value.indexOf('\n', selectionStart)
+        : value.indexOf('\n', selectionEnd);
+      const fullEnd = rawEnd === -1 ? value.length : rawEnd;
+      return value.slice(fullStart, fullEnd).split('\n');
+    }
+
+    function makeCycleButton(textarea) {
+      return makeCyclePopoverButton(textarea, {
+        modes: LIST_MODES,
+        detect: (ta) => detectListMode(selectedLines(ta)),
+        apply: (ta, id) => applyListMode(ta, id),
+        iconFor: (id) => listModeIcon(id),
+        labelFor: (m) => m.label,
+      });
+    }
+
+    // ── Heading level (#, ##, ###) ──
+    // Like the list button, this rewrites the prefix of every selected line.
+    const HEADER_MODES = [
+      { id: 'plain', label: 'Regular text', hashes: '' },
+      { id: 'h1',    label: 'Heading 1',    hashes: '# ' },
+      { id: 'h2',    label: 'Heading 2',    hashes: '## ' },
+      { id: 'h3',    label: 'Heading 3',    hashes: '### ' },
+    ];
+    const STRIP_HEADER_RE = /^(\s*)#{1,6}[ \t]+/;
+
+    function detectHeader(lines) {
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const m = line.match(/^\s*(#{1,6})[ \t]+/);
+        if (!m) return 'plain';
+        return m[1].length >= 3 ? 'h3' : (m[1].length === 2 ? 'h2' : 'h1');
+      }
+      return 'plain';
+    }
+
+    function applyHeader(textarea, modeId) {
+      const { selectionStart, selectionEnd, value } = textarea;
+      const fullStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+      const rawEnd = selectionStart === selectionEnd
+        ? value.indexOf('\n', selectionStart)
+        : value.indexOf('\n', selectionEnd);
+      const fullEnd = rawEnd === -1 ? value.length : rawEnd;
+      const before = value.slice(0, fullStart);
+      const selected = value.slice(fullStart, fullEnd);
+      const after = value.slice(fullEnd);
+      const hashes = HEADER_MODES.find(m => m.id === modeId).hashes;
+      const replacement = selected.split('\n').map(line => {
+        const indent = line.match(/^(\s*)/)[1];
+        const body = line.replace(STRIP_HEADER_RE, '$1').slice(indent.length);
+        if (!body.trim()) return line;
+        return indent + hashes + body;
+      }).join('\n');
+      textarea.value = before + replacement + after;
+      textarea.selectionStart = before.length;
+      textarea.selectionEnd = before.length + replacement.length;
+      textarea.dispatchEvent(new Event('input'));
+      textarea.focus();
+    }
+
+    function headerIcon(mode) {
+      const a = `width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"`;
+      const H = `<path d="M4 12h8"/><path d="M4 18V6"/><path d="M12 18V6"/>`;
+      if (mode === 'h1') return `<svg ${a}>${H}<path d="m17 12 3-2v8"/></svg>`;
+      if (mode === 'h2') return `<svg ${a}>${H}<path d="M21 18h-4c0-4 4-3 4-6 0-1.5-2-2.5-4-1"/></svg>`;
+      if (mode === 'h3') return `<svg ${a}>${H}<path d="M17.5 10.5c1.7-1 3.5 0 3.5 1.5a2 2 0 0 1-2 2"/><path d="M17 17.5c2 1.5 4 .3 4-1.5a2 2 0 0 0-2-2"/></svg>`;
+      return `<svg ${a}><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="16" y2="12"/><line x1="4" y1="18" x2="13" y2="18"/></svg>`; // regular text
+    }
+
+    function makeHeaderButton(textarea) {
+      return makeCyclePopoverButton(textarea, {
+        modes: HEADER_MODES,
+        detect: (ta) => detectHeader(selectedLines(ta)),
+        apply: (ta, id) => applyHeader(ta, id),
+        iconFor: (id) => headerIcon(id),
+        labelFor: (m) => m.label,
+      });
+    }
+
+    // ── Inline text formatting (bold / italic / strikethrough / code) ──
+    // The grown range is what gets wrapped: a bare cursor selects the word it
+    // sits in, and a partial selection grows outward to complete the words at
+    // each end, then trims surrounding whitespace so the markers hug real text.
+    const FORMAT_MODES = [
+      { id: 'plain',  label: 'Plain text' },
+      { id: 'bold',   label: 'Bold' },
+      { id: 'italic', label: 'Italic' },
+      { id: 'strike', label: 'Strikethrough' },
+    ];
+    const FORMAT_MARK = { bold: '**', italic: '*', strike: '~~' };
+    const WORDCH = /[\p{L}\p{N}_]/u;
+
+    function formatRange(value, start, end) {
+      while (start > 0 && WORDCH.test(value[start - 1])) start--;
+      while (end < value.length && WORDCH.test(value[end])) end++;
+      while (start < end && /\s/.test(value[start])) start++;
+      while (end > start && /\s/.test(value[end - 1])) end--;
+      return [start, end];
+    }
+
+    // Find a pair of `m` markers on the selection's line whose span encloses
+    // [s, e]. Occurrences are paired sequentially (1st opens, 2nd closes, ...)
+    // so markers of unrelated spans on the same line don't false-positive.
+    function findEnclosingMark(value, s, e, m) {
+      const lineStart = s === 0 ? 0 : value.lastIndexOf('\n', s - 1) + 1;
+      let lineEnd = value.indexOf('\n', e);
+      if (lineEnd === -1) lineEnd = value.length;
+      const occ = [];
+      for (let i = lineStart; i <= lineEnd - m.length; ) {
+        if (value.startsWith(m, i)) { occ.push(i); i += m.length; }
+        else i++;
+      }
+      for (let k = 0; k + 1 < occ.length; k += 2) {
+        if (occ[k] + m.length <= s && e <= occ[k + 1]) return [occ[k], occ[k + 1]];
+      }
+      return null;
+    }
+
+    // The enclosing formatted span, even when the cursor sits on an inner word
+    // of a multi-word span like **word1 word2**. Innermost span wins so nested
+    // marks (e.g. **a *i* b**) read as the closest one.
+    function detectFormatSpan(value, s, e) {
+      let best = null;
+      for (const [id, m] of [['bold', '**'], ['strike', '~~'], ['italic', '*'], ['italic', '_']]) {
+        const span = findEnclosingMark(value, s, e, m);
+        if (span && (!best || span[0] > best.open)) best = { id, mark: m, open: span[0], close: span[1] };
+      }
+      return best;
+    }
+
+    function detectFormat(textarea) {
+      const { selectionStart, selectionEnd, value } = textarea;
+      const [s, e] = formatRange(value, selectionStart, selectionEnd);
+      return detectFormatSpan(value, s, e)?.id || 'plain';
+    }
+
+    function applyFormat(textarea, targetId) {
+      const { selectionStart, selectionEnd, value } = textarea;
+      const [s, e] = formatRange(value, selectionStart, selectionEnd);
+      const span = detectFormatSpan(value, s, e);
+      const cur = span?.id || 'plain';
+      const target = targetId === cur ? 'plain' : targetId;   // re-picking the active mode removes it
+      let before, inner, after;
+      if (span) {
+        // Reformat the whole enclosing span, wherever its markers sit
+        before = value.slice(0, span.open);
+        inner = value.slice(span.open + span.mark.length, span.close);
+        after = value.slice(span.close + span.mark.length);
+      } else {
+        before = value.slice(0, s); inner = value.slice(s, e); after = value.slice(e);
+      }
+      const tMark = target === 'plain' ? '' : FORMAT_MARK[target];
+      textarea.value = before + tMark + inner + tMark + after;
+      const ns = before.length + tMark.length;
+      textarea.selectionStart = ns;
+      textarea.selectionEnd = ns + inner.length;
+      textarea.dispatchEvent(new Event('input'));
+      textarea.focus();
+    }
+
+    function formatIcon(mode) {
+      const a = `width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"`;
+      if (mode === 'bold')   return `<svg ${a}><path d="M7 4h5.5a4 4 0 0 1 0 8H7z"/><path d="M7 12h6.5a4 4 0 0 1 0 8H7z"/></svg>`;
+      if (mode === 'italic') return `<svg ${a}><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg>`;
+      if (mode === 'strike') return `<svg ${a}><path d="M16 7.6C16 5.4 14.2 4 12 4C9.8 4 8 5.4 8 7.4C8 9.5 9.9 10.5 11.8 11.2"/><path d="M14.6 14.4C15.6 15.1 16 16 16 17.1C16 19 14.2 20 12 20C9.8 20 8 18.6 8 16.8"/><line x1="4.5" y1="12" x2="19.5" y2="12" stroke-width="1.6"/></svg>`;
+      return `<svg ${a}><polyline points="6.5 7 6.5 4 17.5 4 17.5 7"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="9" y1="20" x2="15" y2="20"/></svg>`; // regular text
+    }
+
+    function makeFormatButton(textarea) {
+      return makeCyclePopoverButton(textarea, {
+        modes: FORMAT_MODES,
+        detect: (ta) => detectFormat(ta),
+        apply: (ta, id, cur) => applyFormat(ta, id, cur),
+        iconFor: (id) => formatIcon(id),
+        labelFor: (m) => m.label,
+      });
+    }
+
+    // ── Link button ──
+    // Cursor inside an existing [text](url) → unwrap it back to the url. Otherwise
+    // wrap the selection (or the URL-looking token under the cursor): a bare URL
+    // becomes [domain](url) with the readable label pre-selected for editing;
+    // other text becomes [text]() with the caret parked inside the parens.
+    const LINK_URL_RE = /^(?:https?:\/\/|www\.)[^\s]+$|^[\w-]+(?:\.[\w-]+)+(?:\/[^\s]*)?$/i;
+    function readableFromUrl(url) {
+      try {
+        const u = new URL(/^https?:\/\//i.test(url) ? url : 'https://' + url);
+        return u.hostname.replace(/^www\./, '') || url;
+      } catch { return url; }
+    }
+    function applyLink(textarea) {
+      const { selectionStart: s0, selectionEnd: e0, value } = textarea;
+      const LINK_RE = /\[([^\]]*)\]\(([^)]*)\)/g;
+      let m;
+      while ((m = LINK_RE.exec(value)) !== null) {
+        const start = m.index, end = start + m[0].length;
+        const overlaps = s0 === e0 ? (s0 >= start && s0 <= end) : (s0 < end && e0 > start);
+        if (overlaps) {
+          const repl = m[2].trim() || m[1];
+          textarea.value = value.slice(0, start) + repl + value.slice(end);
+          textarea.selectionStart = start;
+          textarea.selectionEnd = start + repl.length;
+          textarea.dispatchEvent(new Event('input'));
+          textarea.focus();
+          return;
+        }
+      }
+      let s = s0, e = e0;
+      if (s === e) {
+        while (s > 0 && !/\s/.test(value[s - 1])) s--;
+        while (e < value.length && !/\s/.test(value[e])) e++;
+      }
+      while (s < e && /\s/.test(value[s])) s++;
+      while (e > s && /\s/.test(value[e - 1])) e--;
+      const sel = value.slice(s, e);
+      let repl, caretStart, caretEnd;
+      if (sel && LINK_URL_RE.test(sel)) {
+        const label = readableFromUrl(sel);
+        repl = '[' + label + '](' + sel + ')';
+        caretStart = 1; caretEnd = 1 + label.length;          // select the label
+      } else if (sel) {
+        repl = '[' + sel + ']()';
+        caretStart = caretEnd = sel.length + 3;               // inside the ()
+      } else {
+        repl = '[]()';
+        caretStart = caretEnd = 1;                            // inside the []
+      }
+      textarea.value = value.slice(0, s) + repl + value.slice(e);
+      textarea.selectionStart = s + caretStart;
+      textarea.selectionEnd = s + caretEnd;
+      textarea.dispatchEvent(new Event('input'));
+      textarea.focus();
+    }
+
+    function makeLinkButton(textarea) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.title = 'Add / remove link';
+      btn.style.cssText = 'padding:6px 10px;font-size:0.85rem;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;min-height:36px;display:flex;align-items:center;justify-content:center;';
+      btn.innerHTML = ICON.link;
+      btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); applyLink(textarea); });
+      return btn;
     }
 
     // ── Add-picture button ──
@@ -1107,6 +1610,9 @@
       copy: `<svg ${svgAttrs}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
       image: `<svg ${svgAttrs}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
       camera: `<svg ${svgAttrs}><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
+      link: `<svg ${svgAttrs}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+      grip: `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="9" cy="5" r="1.8"/><circle cx="15" cy="5" r="1.8"/><circle cx="9" cy="12" r="1.8"/><circle cx="15" cy="12" r="1.8"/><circle cx="9" cy="19" r="1.8"/><circle cx="15" cy="19" r="1.8"/></svg>`,
+      plus: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
     };
 
     // ── Confirm-to-act button helper ──
@@ -1286,12 +1792,55 @@
 
     // Resize a textarea to fit its content WITHOUT yanking the page scroll: the
     // brief `height:auto` collapse can clamp window scroll on very tall notes.
+    // Grow a textarea to fit its content, but never past the point where its
+    // action-button row (Save/Cancel + format tools, the textarea's next sibling)
+    // would slip off the bottom of the screen. Past that cap the textarea scrolls
+    // internally, so the buttons stay visible at all times.
+    function maxTextareaHeight(ta) {
+      const top = ta.getBoundingClientRect().top;
+      const actions = ta.nextElementSibling;
+      const actionsH = actions ? actions.getBoundingClientRect().height : 44;
+      // Anchoring the cap to `top` keeps the textarea's bottom pinned at
+      // (innerHeight - reserve) regardless of how far the card is scrolled.
+      return Math.max(120, window.innerHeight - top - actionsH - 24);
+    }
     function autosize(ta) {
       const y = window.scrollY;
       ta.style.height = 'auto';
-      ta.style.height = ta.scrollHeight + 'px';
+      const full = ta.scrollHeight;
+      const max = maxTextareaHeight(ta);
+      ta.style.height = Math.min(full, max) + 'px';
+      ta.style.overflowY = full > max ? 'auto' : 'hidden';
       if (window.scrollY !== y) window.scrollTo(0, y);
     }
+
+    // Cap is measured from the textarea's viewport top, so a card lower in the
+    // list would otherwise get a shorter editor than one near the top. When the
+    // content is long enough to be capped, pull the card up to a fixed top first
+    // so every long note opens to the same generous height — then recompute.
+    const EDIT_TOP_TARGET = 12;
+    function fitEditArea(ta) {
+      autosize(ta);
+      if (ta.style.overflowY !== 'auto') return;        // short note: shown in full, nothing to equalize
+      const top = ta.getBoundingClientRect().top;
+      if (top > EDIT_TOP_TARGET) {
+        window.scrollBy(0, top - EDIT_TOP_TARGET);
+        autosize(ta);
+      }
+    }
+
+    // Re-cap any open textareas when the viewport changes (mobile keyboard
+    // sliding in/out, rotation) so the action row never gets pushed off-screen.
+    let resizeRaf = null;
+    window.addEventListener('resize', () => {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = null;
+        document.querySelectorAll('.edit-textarea, #new-entry').forEach(ta => {
+          if (ta.offsetParent !== null) autosize(ta);
+        });
+      });
+    });
 
     // ── Inline images (pasted / captured) ──
     const IMG_MAX_EDGE = 960;  // longest side after downscale
@@ -2062,13 +2611,26 @@
         actions.appendChild(saveBtn);
         actions.appendChild(cancelBtn);
         actions.appendChild(escHint);
-        const imgBtn = makeImageButton(textarea);
-        imgBtn.style.marginLeft = 'auto';
-        actions.appendChild(imgBtn);
+        const headerBtn = makeHeaderButton(textarea);
+        headerBtn.style.marginLeft = 'auto';
+        actions.appendChild(headerBtn);
+        const fmtBtn = makeFormatButton(textarea);
+        fmtBtn.style.marginLeft = '6px';
+        actions.appendChild(fmtBtn);
         const cycleEl = makeCycleButton(textarea);
         cycleEl.style.marginLeft = '6px';
         actions.appendChild(cycleEl);
+        const linkBtn = makeLinkButton(textarea);
+        linkBtn.style.marginLeft = '6px';
+        actions.appendChild(linkBtn);
+        const imgBtn = makeImageButton(textarea);
+        imgBtn.style.marginLeft = '6px';
+        actions.appendChild(imgBtn);
         refreshSizeState();
+        // The first autosize ran before this action row existed (so its height
+        // couldn't be reserved); recompute now that the buttons are in the DOM,
+        // then fit it consistently regardless of where the card sat in the list.
+        requestAnimationFrame(() => fitEditArea(textarea));
       }
 
       card.appendChild(contentEl);
@@ -2266,8 +2828,11 @@
     // ── Event listeners ──
     const cancelNewBtn = document.getElementById('cancel-new');
     const newEscHint = document.getElementById('new-esc-hint');
-    document.getElementById('new-cycle-slot').appendChild(makeImageButton(newEntry));
+    document.getElementById('new-cycle-slot').appendChild(makeHeaderButton(newEntry));
+    document.getElementById('new-cycle-slot').appendChild(makeFormatButton(newEntry));
     document.getElementById('new-cycle-slot').appendChild(makeCycleButton(newEntry));
+    document.getElementById('new-cycle-slot').appendChild(makeLinkButton(newEntry));
+    document.getElementById('new-cycle-slot').appendChild(makeImageButton(newEntry));
     // Image session for the composer (the new note isn't a doc yet → key '__new__').
     newEntry._imgKey = '__new__';
     newEntry._imgOrder = [];
@@ -2276,6 +2841,7 @@
     function closeNewEntry() {
       newEntry.value = '';
       newEntry.style.height = 'auto';
+      newEntry.style.overflowY = 'hidden';
       newEscHint.textContent = '';
       newEntry.classList.remove('over-limit');
       appendBtn.disabled = false;
@@ -2310,8 +2876,7 @@
     };
 
     newEntry.addEventListener('input', () => {
-      newEntry.style.height = 'auto';
-      newEntry.style.height = newEntry.scrollHeight + 'px';
+      autosize(newEntry);
       refreshNewSizeState();
     });
 
