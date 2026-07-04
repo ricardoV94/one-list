@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- interactive-widget=resizes-content: the on-screen keyboard shrinks the
+       layout viewport instead of overlaying it, so the sticky toolbar and caret
+       scrolling use the visible area (keyboard-aware) on supporting browsers. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
   <meta name="theme-color" content="#7bae7f">
   <link rel="manifest" href="/manifest.json">
   <!-- App icon: Josefin Sans 700, sage #7bae7f -->
@@ -24,15 +27,24 @@
   <title>One List</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    /* Kill the mobile tap flash (the grey/blue box on tap) app-wide — every button
+       and interactive row has its own :active feedback, so the native highlight is
+       just noise (and looked like a stray blue background on some controls). */
+    * { -webkit-tap-highlight-color: transparent; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       max-width: 600px;
       margin: 0 auto;
-      padding: 16px;
+      /* A little extra right padding so the per-paragraph edit handle, which sits ~20px
+         into the right gutter, isn't shaved by overflow-x: clip on narrow screens. */
+      padding: 16px 24px 16px 20px;
       background: #f5f5f5;
       color: #222;
-      overflow-x: hidden;
+      /* `clip` (not `hidden`) contains horizontal overflow WITHOUT making body a
+         scroll container — `overflow-x: hidden` computes overflow-y to auto, which
+         breaks `position: sticky` for the edit toolbar (notably on mobile). */
+      overflow-x: clip;
     }
 
     header {
@@ -98,22 +110,13 @@
     html.boot-app #app { display: block; }
 
     #input-area { display: none; margin-bottom: 16px; }
+    /* Visibility only — the card chrome, borderless textarea and bled action row are
+       all shared from the .entry-card / .edit-textarea rules (grouped selectors below)
+       so the composer presents as a blank note in edit mode with zero duplication. */
     #input-area.open { display: block; }
     #search-area { display: none; }
 
-    #new-entry {
-      width: 100%;
-      min-height: 120px;
-      padding: 12px;
-      font-size: 1rem;
-      font-family: inherit;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      resize: vertical;
-      margin-bottom: 8px;
-      outline: none;
-    }
-    #new-entry:focus { border-color: #7bae7f; box-shadow: 0 0 0 2px rgba(123,174,127,0.3); }
+    /* #new-entry styling is shared from the .edit-textarea rule above. */
 
     .esc-hint {
       font-size: 0.8rem;
@@ -157,15 +160,35 @@
     }
     #search-clear.visible { display: block; }
 
-    .entry-card {
+    .entry-card, #input-area.open {
       background: #fff;
       border: 1px solid #ddd;
       border-radius: 8px;
       padding: 12px;
       margin-bottom: 12px;
+      position: relative; /* positioning context for the card-anchored .edit-ridge */
     }
 
     .entry-card.shared { border-left: 3px solid #7bae7f; }
+    /* A note shared to me that I've set aside (unlinked) — rose left bar, the
+       mirror of the sage "shared" bar. Only seen in the Shared view. */
+    .entry-card.unlinked { border-left: 3px solid #d4728c; }
+    /* Count of notes I've set aside — a rose pill on the view filter, nudging me
+       toward Shared where I can recover them. */
+    .view-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 16px; height: 16px; padding: 0 4px; margin-left: 5px;
+      font-size: 0.68rem; font-weight: 600; line-height: 1;
+      background: #d4728c; color: #fff; border-radius: 8px;
+    }
+    /* Blue ridge on the card's right edge, sized (top/height) by JS to the edited row
+       (solid, .edit-ridge) or the hovered one (soft, .edit-ridge.soft — the preview of
+       where a click would land, shown even while another row is being edited). */
+    .edit-ridge {
+      position: absolute; right: -1px; width: 3px; display: none; z-index: 5;
+      background: var(--edit-cue); pointer-events: none;
+    }
+    .edit-ridge.soft { background: var(--edit-cue-soft); z-index: 4; }
 
     .entry-date {
       font-size: 0.8rem;
@@ -223,70 +246,39 @@
     }
 
     /* ── Todo items - ( ) — circular checkbox ── */
-    .entry-content li.todo-item { list-style: none; margin-left: -24px; display: flex; align-items: center; padding: 5px 0; }
+    .entry-content li.todo-item { list-style: none; margin-left: -24px; display: flex; align-items: center; padding: 3px 0; }
     .entry-content li.todo-item + li.todo-item { border-top: 1px solid #eee; }
     .history-viewing .entry-content li.todo-item + li.todo-item { border-top: none; }
     .history-viewing .entry-content li.todo-item { padding: 0; }
     .entry-content li.todo-item:not(.dragging) { transition: transform 0.12s; }
-    /* Empty-list placeholder (a lone "- ( )"): the list shows only its add trigger */
-    .entry-content li.todo-item.todo-placeholder { display: none; }
     .entry-content li.todo-item input[type="checkbox"] { border-radius: 50%; margin-right: 6px; }
-    .entry-content li.todo-item .todo-text { flex: 1; }
+    .entry-content li.todo-item .todo-text { flex: 1; min-height: 1.5em; line-height: 1.5; }
     .entry-content li.todo-item.checked .todo-text { color: #aaa; text-decoration: line-through; }
-    .entry-content li.todo-item .todo-x {
-      border: none; background: none; cursor: pointer; padding: 0;
-      margin-left: auto; color: #bbb; font-size: 1.1rem; line-height: 1;
-      flex-shrink: 0; transition: color 0.12s, background 0.12s;
-      border-radius: 50%; width: 22px; height: 22px; display: flex;
-      align-items: center; justify-content: center; box-sizing: border-box;
-    }
-    .entry-content li.todo-item .todo-x:hover { color: #d4728c; }
-    .entry-content li.todo-item .todo-x.confirm {
-      background: #d4728c; color: #fff; font-weight: bold;
-      padding-bottom: 2px;
-    }
-    .entry-content li.todo-item .todo-grip, .todo-add-inline .todo-grip {
-      border: none; background: none; cursor: grab; padding: 0;
-      color: #ccc; flex-shrink: 0; touch-action: none;
-      width: 22px; height: 22px; display: flex;
-      align-items: center; justify-content: center; box-sizing: border-box;
-      -webkit-user-select: none; user-select: none;
-    }
-    .entry-content li.todo-item.dragging, .entry-content .todo-add-inline.dragging {
-      background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-      border-radius: 8px; position: relative; z-index: 10;
-      border-top-color: transparent;
-    }
-    .entry-content li.dragging .todo-grip { cursor: grabbing; }
-    .todo-add-trigger {
-      list-style: none; margin-left: -24px; display: flex; align-items: center;
-      padding: 5px 0 5px 22px; cursor: pointer; color: #bbb; gap: 6px;
-      transition: color 0.12s; border-top: 1px solid #eee;
-    }
-    .todo-add-trigger:hover { color: #7bae7f; }
-    .todo-add-trigger .plus-icon {
-      width: 18px; height: 18px; display: flex; align-items: center;
-      justify-content: center; flex-shrink: 0; line-height: 0;
-      position: relative; top: 2px;
-    }
-    /* Styled as a todo row being typed into: same padding/checkbox/alignment
-       as li.todo-item so the new item doesn't shift when saved */
-    .todo-add-inline {
-      list-style: none; margin-left: -24px; display: flex; align-items: center;
-      padding: 5px 0; border-top: 1px solid #eee;
-    }
-    .todo-add-inline input[type="checkbox"] { border-radius: 50%; }
-    .todo-add-inline:has(input[type="checkbox"]:checked) input[type="text"] { color: #aaa; text-decoration: line-through; }
-    .todo-add-inline input[type="text"] {
-      flex: 1; padding: 0; font: inherit; color: inherit;
+
+    /* ── Per-item editing ──
+       Click a list row to edit just its text; click the gutter (either side of the
+       rows — the extra 20px block padding carves a click strip left AND right) to
+       edit the whole list as a block. The bare input inherits the row font, and the
+       edit cue rides on the row (.editing-item) like the block editors. */
+    .md-block.list-block { cursor: pointer; padding-left: 20px; padding-right: 20px; }
+    .md-block.list-block li { cursor: text; }
+    .item-edit {
+      flex: 1; width: 100%; min-width: 0; padding: 0;
+      font: inherit; color: inherit; line-height: 1.5; min-height: 1.5em;
       border: none; outline: none; background: none;
+      resize: none; overflow-y: hidden; display: block; /* textarea: wrap + autosize */
     }
-    .todo-add-cancel {
-      background: none; border: none; cursor: pointer; padding: 0;
-      color: #222; line-height: 0; flex-shrink: 0;
-      width: 22px; height: 22px; display: flex;
-      align-items: center; justify-content: center;
+    .entry-content li.todo-item.checked .item-edit { color: #aaa; text-decoration: line-through; }
+    /* The edited row just gets a faint shade; the blue ridge is drawn separately by
+       .edit-ridge, anchored to the CARD's right edge and sized to the row. The row
+       bleeds right to the card edge (−20 margin, +12 padding keeps its text put) so
+       the edit handle, which hangs off the row's right edge, lands in the card's
+       right gutter for nested list rows too. */
+    .entry-content li.editing-item {
+      position: relative; background: var(--edit-shade);
+      margin-right: -20px; padding-right: 12px;
     }
+    .entry-content li.todo-item.editing-item { padding: 3px 12px 3px 0; }
 
     .entry-actions {
       display: flex;
@@ -297,23 +289,29 @@
       border-top: 1px solid #eee;
       padding-top: 8px;
     }
-    /* Inside a card the row bleeds to the edges (negative side/bottom margins
-       cancel the card's 12px padding) so the divider spans the full width and
-       the buttons keep an even 8px below them; the composer, which has no
-       padding, uses the base rule as-is. */
-    .entry-card .entry-actions { margin: 0 -12px -12px; padding: 8px 12px; }
+    /* Inside a card (or the composer, now that it has the same padding) the row bleeds
+       to the edges (negative side/bottom margins cancel the 12px padding) so the divider
+       spans the full width and the buttons keep an even 8px below them. */
+    .entry-card .entry-actions, #input-area.open .entry-actions { margin: 0 -12px -12px; padding: 8px 12px; }
+    /* The action row sticks to the viewport bottom in VIEW mode too, so on a long
+       note the buttons stay reachable without scrolling to its very end. Its own
+       background lets the content scroll cleanly underneath. (Edit mode overrides
+       the offset below to sit above the keyboard.) */
+    .entry-card .entry-actions {
+      position: sticky; bottom: 0; z-index: 3;
+      background: #fff;
+      border-radius: 0 0 8px 8px;
+    }
 
     /* While editing, the button row sticks to the viewport bottom so it's always
        reachable — replacing the old height-cap + internal-scroll hack. Its own
        background lets the content scroll cleanly underneath. */
-    .entry-card.editing .entry-actions {
-      position: sticky; bottom: 0; z-index: 5;
+    /* --kb-inset lifts the bar above the on-screen keyboard (set from the
+       VisualViewport API); 0 on desktop / when no keyboard is shown. */
+    .entry-card.editing .entry-actions, #input-area.open .entry-actions {
+      position: sticky; bottom: var(--kb-inset, 0px); z-index: 5;
       background: #fff;
       border-radius: 0 0 8px 8px;
-    }
-    #input-area.open .entry-actions {
-      position: sticky; bottom: 0; z-index: 5;
-      background: #f5f5f5;
     }
 
     .entry-actions button {
@@ -331,8 +329,10 @@
 
     .entry-actions button:active { background: #eee; }
     .entry-actions button:disabled { opacity: 0.4; cursor: default; }
-    .entry-actions button.btn-save { background: #7bae7f; border-color: #7bae7f; color: #fff; }
-    .entry-actions button.btn-save:active { background: #6a9d6e; }
+    /* Blue (the --edit-cue used for the editing bar) marks save as the edit/confirm
+       action; the variable flips automatically in dark mode. */
+    .entry-actions button.btn-save { background: var(--edit-cue); border-color: var(--edit-cue); color: #fff; }
+    .entry-actions button.btn-save:active { filter: brightness(0.92); }
     .icon-bg { fill: #fff; }
 
 
@@ -363,23 +363,147 @@
 
     .history-viewing .entry-content { opacity: 0.7; }
 
-    .edit-textarea {
+    /* ── Per-block editing ──
+       An active block editor is near-invisible: same font/size/position as the
+       rendered text it replaces, no frame — the one cue is a blue bar on the
+       card's right edge (the mirror of a shared note's sage left bar) plus a
+       faint shade fill. --edit-cue-soft previews that bar on hover. */
+    :root { --edit-cue: #5b8fd6; --edit-cue-soft: rgba(91,143,214,0.45); --edit-shade: rgba(0,0,0,0.035); }
+    .dark { --edit-cue: #7fb0e8; --edit-cue-soft: rgba(127,176,232,0.4); --edit-shade: rgba(255,255,255,0.045); }
+    /* Blocks bleed into the card's 12px padding so the hover tint / edit ridge
+       spans the full note width without shifting the rendered text. */
+    .md-block { position: relative; margin: 0 -12px; padding: 0 12px; }
+    /* Each block wraps one top-level element whose own bottom margin is zeroed by
+       :last-child rules; carry the inter-block rhythm on the block instead. */
+    .md-block + .md-block { margin-top: 8px; }
+    .md-block > :last-child { margin-bottom: 0; }
+    .md-block:not(.list-block) { cursor: text; }
+    /* Hover/edit cue (the blue ridge) is the card-anchored .edit-ridge, positioned
+       by JS to whichever block/row is hovered or edited. */
+    .block-edit-wrap { position: relative; margin: 0 -12px 8px -12px; }
+    /* ── Drag-to-reorder (edit-mode only) ── */
+    .md-block:not(.dragging) { transition: transform 0.12s; }
+    .md-block.list-block li:not(.dragging) { transition: transform 0.12s; }
+    /* One unified pop-out handle on the closest edge of the OPEN editor: a single
+       blue tab holding the drag grip (reorder) on top, then copy-section and
+       trash-section icons, all white-on-blue split by faint dividers. The .edit-handle
+       is a full-height rail (a scroll track, click-through) pinned just outside the
+       text column; the tab inside is `position: sticky` so it rides the top of the
+       viewport as a tall paragraph scrolls and slides off with its last line —
+       CSS-native, so there's no scroll-follow jitter. */
+    /* Offset === width, so the tab's inner edge sits right at the editor's edge (the
+       ridge line) and the whole tab lives OUT in the side gutter — never over text. */
+    .edit-handle {
+      position: absolute; top: 0; bottom: 0; right: -20px;
+      width: 20px;
+      pointer-events: none;      /* rail is just a track; the tab takes the events */
+      z-index: 6;
+      -webkit-user-select: none; user-select: none;
+    }
+    .edit-handle-tab {
+      position: sticky; top: 8px;
+      pointer-events: auto;
+      /* 1px nudge into the gutter so the card's own edge stays visible underneath
+         instead of being covered by the tab's flat left side. */
+      margin-left: 1px;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      border: 1px solid #ddd; border-left: none;
+      border-radius: 0 8px 8px 0;
+    }
+    /* At rest the grip matches copy + trash — white with dark dots. It only goes blue
+       (white dots) while actually dragging (.dragging on the drag element). The trash's
+       two-tap cooldown tints just the trash button rose (confirmButton). */
+    .edit-handle-grip {
+      height: 38px;
+      background: #fff; color: #555;
+      display: flex; align-items: center; justify-content: center;
+      cursor: grab; touch-action: none;
+    }
+    .edit-handle-grip:active { cursor: grabbing; }
+    .dragging .edit-handle-grip { background: var(--edit-cue); color: rgba(255,255,255,0.95); }
+    /* Grip dots render smaller than the copy/trash line icons; size them up to match. */
+    .edit-handle-grip > svg { pointer-events: none; width: 18px; height: 18px; }
+    .edit-handle-btn {
+      height: 30px; padding: 0;
+      background: #fff; color: #555; border: none;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+    .edit-handle-btn:active { background: #eee; }
+    .edit-handle-tab > * + * { border-top: 1px solid #ddd; }
+    .block-edit-wrap.dragging { box-shadow: 0 6px 16px rgba(0,0,0,0.16); z-index: 10; }
+    .entry-content li.editing-item.dragging { z-index: 10; box-shadow: 0 6px 16px rgba(0,0,0,0.16); }
+    .block-edit {
+      display: block; box-sizing: border-box;
+      width: 100%; margin: 0; padding: 0 12px;
+      min-height: 0; font: inherit; line-height: 1.5;
+      border: none; border-radius: 0;
+      background: var(--edit-shade); color: inherit;
+      outline: none; resize: none; overflow-y: hidden;
+    }
+    .block-edit.code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    /* Empty strips above the first / below the last block: hover shades them,
+       click starts a new paragraph there. The top zone annexes the card's own
+       top padding so rendered content doesn't move. */
+    .new-zone { height: 20px; margin: -12px -12px 0; cursor: text; border-radius: 8px 8px 0 0; }
+    .new-zone.bottom { height: 18px; margin: 0 -12px; border-radius: 0; }
+    .new-zone:hover { box-shadow: inset -3px 0 0 0 var(--edit-cue-soft); }
+    .new-zone.inert { pointer-events: none; }
+
+    /* Whole-note editor: near-invisible like the block editors — raw source in the
+       body font where the text sat, no frame. The cue is a full-height blue ridge
+       on the card's right edge (.editing-full), the mirror of a shared note's sage
+       left bar. */
+    .edit-textarea, #new-entry {
       width: 100%;
       min-height: 80px;
-      padding: 8px;
-      font-size: 1rem;
-      font-family: inherit;
-      border: 1px solid #7bae7f;
-      border-radius: 6px;
+      padding: 0;
+      font: inherit;
+      line-height: 1.5;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      color: inherit;
       outline: none;
       resize: none;
       margin-bottom: 8px;
       overflow-y: hidden;
     }
-    .edit-textarea:focus { border-color: #7bae7f; box-shadow: 0 0 0 2px rgba(123,174,127,0.3); }
+    /* The composer is a whole-note edit, so it wears the same full-height blue edit cue. */
+    .entry-card.editing-full, #input-area.open { border-right: 3px solid var(--edit-cue); }
     .edit-textarea.over-limit, .edit-textarea.over-limit:focus,
     #new-entry.over-limit, #new-entry.over-limit:focus {
       border-color: #d4728c; box-shadow: 0 0 0 2px rgba(212,114,140,0.3);
+    }
+
+    /* The edit toolbar keeps all controls on one row (never wraps); the esc-hint
+       shrinks to make room. Empty hint takes no space. */
+    .entry-card.editing .entry-actions,
+    #input-area.open .entry-actions { flex-wrap: nowrap; }
+    .entry-card.editing .entry-actions button,
+    #input-area.open .entry-actions button { flex-shrink: 0; }
+    .entry-actions .esc-hint { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .entry-actions .esc-hint:empty { display: none; }
+    /* Buttons step down a size on smaller screens so the 8-icon edit row fits —
+       applied to EVERY button row so all rows stay the same size on a given device
+       (consistent within the device, just smaller than on a wide one). */
+    /* On narrower screens the text (esc-hint, history date) drops to its own
+       full-width line ABOVE the buttons — right-aligned, above the action group —
+       instead of shoving the buttons onto a second row. */
+    @media (max-width: 500px) {
+      .entry-card.editing .entry-actions,
+      #input-area.open .entry-actions { flex-wrap: wrap; }
+      .entry-actions .esc-hint { order: -1; flex-basis: 100%; overflow: visible; white-space: normal; text-align: right; }
+      .history-nav .entry-date { order: -1; flex-basis: 100%; margin-left: 0; text-align: right; }
+    }
+    @media (max-width: 480px) {
+      .entry-actions, .history-nav { gap: 6px; }
+      .entry-actions button, .history-nav button { padding: 6px 8px; }
+    }
+    @media (max-width: 360px) {
+      .entry-actions, .history-nav { gap: 4px; }
+      .entry-actions button, .history-nav button { padding: 6px 6px; }
     }
 
     #status {
@@ -430,21 +554,19 @@
 
     /* ── Dark mode ── */
     .dark body, html.dark body { background: #1a1a1a; color: #e0e0e0; }
-    .dark #new-entry { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
     .dark #search-input { background: #2a2a2a; color: #e0e0e0; border-color: #444; }
     .dark #search-clear { color: #e0e0e0; }
-    .dark .todo-add-cancel { color: #e0e0e0; }
     .dark #search-area.open { background: #1a1a1a; }
     .dark .header-icons button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
-    .dark .entry-card { background: #2a2a2a; border-color: #444; }
+    .dark .entry-card, .dark #input-area.open { background: #2a2a2a; border-color: #444; }
     .dark .entry-card.shared { border-left-color: #7bae7f; }
+    .dark .entry-card.unlinked { border-left-color: #d4728c; }
     .dark .entry-actions { border-color: #383838; }
-    .dark .entry-card.editing .entry-actions { background: #2a2a2a; }
-    .dark #input-area.open .entry-actions { background: #1a1a1a; }
+    .dark .entry-card .entry-actions { background: #2a2a2a; }
+    .dark .entry-card.editing .entry-actions, .dark #input-area.open .entry-actions { background: #2a2a2a; }
     .dark .entry-actions button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
     .dark .entry-actions button:active { background: #333; }
-    .dark .entry-actions button.btn-save { background: #7bae7f; border-color: #7bae7f; color: #fff; }
-    .dark .entry-actions button.btn-save:active { background: #6a9d6e; }
+    /* .btn-save inherits var(--edit-cue), which the .dark block already remaps. */
     .dark .icon-bg { fill: #2a2a2a; }
     .dark .entry-content code { background: #383838; }
     .dark .entry-content pre { background: #383838; }
@@ -454,15 +576,14 @@
     .dark .entry-content h3 { color: #bbb; }
     .dark .entry-content a { color: #8ab4f8; }
     .dark .history-nav button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
-    .dark .edit-textarea { background: #2a2a2a; color: #e0e0e0; border-color: #7bae7f; }
+    .dark .edit-textarea, .dark #new-entry { background: #2a2a2a; color: #e0e0e0; border-color: #7bae7f; }
+    .dark .edit-handle-tab { border-color: #444; }
+    .dark .edit-handle-btn { background: #2a2a2a; color: #bbb; }
+    .dark .edit-handle-grip { background: #2a2a2a; color: #bbb; }
+    .dark .edit-handle-btn:active { background: #333; }
+    .dark .edit-handle-tab > * + * { border-top-color: #444; }
     .dark .entry-content li.todo-item + li.todo-item { border-color: #383838; }
-    .dark .entry-content li.todo-item .todo-grip, .dark .todo-add-inline .todo-grip { color: #666; }
-    .dark .entry-content li.todo-item.dragging, .dark .entry-content .todo-add-inline.dragging { background: #2a2a2a; border-top-color: transparent; }
-    .dark .entry-content li.todo-item .todo-x { color: #666; }
-    .dark .entry-content li.todo-item .todo-x:hover { color: #d4728c; }
-    .dark .todo-add-trigger { border-color: #383838; color: #555; }
-    .dark .todo-add-trigger:hover { color: #7bae7f; }
-    .dark .todo-add-inline { border-color: #383838; }
+    .dark .entry-content li.todo-item.dragging { background: #2a2a2a; border-top-color: transparent; }
     .dark .view-popover { background: #2a2a2a; border-color: #444; }
     .dark .view-popover button { background: #2a2a2a; color: #e0e0e0; }
     .dark .view-popover button:hover { background: #333; }
@@ -473,6 +594,31 @@
     .dark .cycle-popover button:hover { background: #333; }
     .dark .cycle-popover button:not(:last-child) { border-color: #383838; }
     .dark .cycle-popover button.active { background: #2a3a2a; color: #7bae7f; }
+
+    /* ── Emoji picker (opens from the edit toolbar) ── reuses popover/search/hover
+       values from .cycle-popover, #search-input and the popover button hovers. */
+    .emoji-wrapper { position: relative; display: inline-flex; }
+    .emoji-btn { font-family: 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif; font-size: 1.15rem; line-height: 1; }
+    .emoji-pop {
+      position: absolute; bottom: calc(100% + 4px); left: 0; z-index: 100;
+      width: 300px; max-height: 340px; display: flex; flex-direction: column;
+      background: #fff; border: 1px solid #ddd; border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.12); overflow: hidden;
+    }
+    .emoji-pop.below { bottom: auto; top: calc(100% + 4px); }
+    .emoji-scroll { overflow-y: auto; padding: 0 8px 8px; min-height: 0; }
+    .emoji-cat { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #999; padding: 8px 2px 4px; position: sticky; top: 0; z-index: 2; background: #fff; }
+    .emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+    .emoji-grid button {
+      border: none; background: none; cursor: pointer; padding: 5px 0; min-height: 0;
+      font-size: 1.25rem; line-height: 1; border-radius: 6px; aspect-ratio: 1;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;
+    }
+    .emoji-grid button:hover { background: #f0f0f0; }
+    .dark .emoji-pop { background: #2a2a2a; border-color: #444; }
+    .dark .emoji-cat { color: #888; background: #2a2a2a; }
+    .dark .emoji-grid button:hover { background: #333; }
   </style>
 </head>
 <body>
@@ -485,7 +631,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-07-04 08:41</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-07-04 19:28</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -544,14 +690,25 @@
       return originalImage(token);
     };
     marked.setOptions({ breaks: true, gfm: true, renderer });
-    // Convert - ( ) / - (x) to standard checkboxes with a marker for post-processing
+    // Convert - ( ) / - (x) AND - [ ] / - [x] to standard checkboxes with a marker
+    // for post-processing \u2014 both syntaxes render as todo items. - [ ] is the
+    // canonical default now (more portable); legacy - ( ) notes still render as todos.
     const TODO_MARKER = '\u200B\u200B';
     function preprocessTodo(md) {
-      return md.replace(/^(\s*)-\s+\(( |x|X)\)/gm, (_, indent, check) =>
-        indent + '- [' + (check === ' ' ? ' ' : 'x') + '] ' + TODO_MARKER
-      );
+      return md.replace(/^(\s*)-\s+(?:\(( |x|X)\)|\[( |x|X)\])/gm, (_, indent, rd, sq) => {
+        const check = rd !== undefined ? rd : sq;
+        return indent + '- [' + (check === ' ' ? ' ' : 'x') + '] ' + TODO_MARKER;
+      });
     }
-    const cleanHtml = (md, images) => DOMPurify.sanitize(marked.parse(preprocessTodo(resolveImageRefs(md, images))), {
+    // An empty plain list marker ("- ", "* ", "1. " with nothing after) is rendered by
+    // marked as a PARAGRAPH, not an <li> — so a block's rendered <li> count falls short
+    // of its source list-lines and every row below gets the WRONG source line index
+    // (edits/nav then corrupt the wrong line). Append a zero-width space so marked always
+    // emits an <li>. Runs AFTER preprocessTodo, which already marks empty checkbox items.
+    function preprocessEmptyItems(md) {
+      return md.replace(/^(\s*(?:[-*+]|\d+\.)[ \t]+)[ \t]*$/gm, '$1​');
+    }
+    const cleanHtml = (md, images) => DOMPurify.sanitize(marked.parse(preprocessEmptyItems(preprocessTodo(resolveImageRefs(md, images)))), {
       ADD_TAGS: ['input'],
       ADD_ATTR: ['type', 'checked', 'disabled', 'target', 'rel'],
     });
@@ -579,17 +736,11 @@
         span.className = 'todo-text';
         while (cb.nextSibling) span.appendChild(cb.nextSibling);
         li.appendChild(span);
-        // Plain [ ] checkboxes get layout only — no todo-item treatment
-        // (delete button, strikethrough, visual sort).
+        // Only marked todos become todo-items. No view-mode delete button or grip
+        // anymore — click a row to edit it; trash + drag live in edit mode.
         if (!found) return;
         li.classList.add('todo-item');
         if (cb.checked) li.classList.add('checked');
-        // Add delete button
-        const x = document.createElement('button');
-        x.className = 'todo-x';
-        x.textContent = '\u00d7';
-        x.title = 'Remove';
-        li.appendChild(x);
       });
     }
 
@@ -599,9 +750,1116 @@
 
     // Re-render contentEl from markdown and re-attach all handlers
     function rerenderContent(contentEl, entry) {
-      contentEl.innerHTML = cleanHtml(entry.content, entry.images);
-      attachCheckboxHandlers(contentEl, entry);
+      renderBlocks(contentEl, entry);
     }
+
+    // ── Block model (source lines → [{start,end}] ranges) ──
+    const isBlank = l => !l.trim();
+    const isFence = l => /^\s*(```|~~~)/.test(l);
+    const isListLine = l => /^\s*([-*+]\s|\d+\.\s)/.test(l);
+    const isHeading = l => /^\s{0,3}#{1,6}\s/.test(l);
+    const isQuote = l => /^\s*>/.test(l);
+    function splitBlocks(src) {
+      const lines = src.split('\n');
+      const blocks = [];
+      let i = 0;
+      while (i < lines.length) {
+        if (isBlank(lines[i])) { i++; continue; }
+        const start = i;
+        if (isFence(lines[i])) {
+          i++;
+          while (i < lines.length && !isFence(lines[i])) i++;
+          if (i < lines.length) i++; // closing fence
+        } else if (isHeading(lines[i])) {
+          i++;
+        } else if (isListLine(lines[i])) {
+          while (i < lines.length && (isListLine(lines[i]) || /^\s+\S/.test(lines[i]))) i++;
+        } else if (isQuote(lines[i])) {
+          while (i < lines.length && isQuote(lines[i])) i++;
+        } else {
+          while (i < lines.length && !isBlank(lines[i]) && !isHeading(lines[i])
+                 && !isListLine(lines[i]) && !isFence(lines[i]) && !isQuote(lines[i])) i++;
+        }
+        blocks.push({ start, end: i - 1 });
+      }
+      return blocks;
+    }
+    const blockText = (content, b) => content.split('\n').slice(b.start, b.end + 1).join('\n');
+
+    // Map a click point inside rendered HTML back to an offset in the block's
+    // markdown source: take the clicked text node, find its text in the source,
+    // add the in-node offset. Falls back to end-of-block.
+    function sourceOffsetFromPoint(x, y, src) {
+      let node = null, off = 0;
+      if (document.caretPositionFromPoint) {
+        const p = document.caretPositionFromPoint(x, y);
+        if (p) { node = p.offsetNode; off = p.offset; }
+      } else if (document.caretRangeFromPoint) {
+        const r = document.caretRangeFromPoint(x, y);
+        if (r) { node = r.startContainer; off = r.startOffset; }
+      }
+      if (!node || node.nodeType !== Node.TEXT_NODE) return src.length;
+      const t = node.textContent;
+      let pos = src.indexOf(t);
+      if (pos === -1) {
+        const trimmed = t.trim();
+        pos = trimmed ? src.indexOf(trimmed) : -1;
+        if (pos !== -1) off = Math.max(0, off - (t.length - t.trimStart().length));
+      }
+      if (pos === -1) return src.length;
+      return pos + Math.min(off, t.length);
+    }
+
+    // Render an entry's content as a column of .md-block elements (+ top/bottom
+    // "new paragraph" zones), then wire click-to-edit on the non-list blocks.
+    // List blocks keep their existing todo chrome for now (Phase 1); they become
+    // click-to-edit rows later. All the todo/checkbox/code wiring still runs once
+    // over the whole contentEl, block structure or not.
+    function renderBlocks(contentEl, entry) {
+      contentEl.innerHTML = '';
+      const lines = entry.content.split('\n'); // split once; blocks slice from here
+      splitBlocks(entry.content).forEach(b => {
+        const div = document.createElement('div');
+        div.className = 'md-block';
+        const src = lines.slice(b.start, b.end + 1).join('\n');
+        if (isListLine(lines[b.start])) div.classList.add('list-block');
+        div.innerHTML = cleanHtml(src, entry.images);
+        div.__entry = entry;
+        div.__block = b;
+        contentEl.appendChild(div);
+        if (div.classList.contains('list-block')) return; // list wiring runs below
+        div.addEventListener('click', (e) => {
+          if (activeBlock) return;               // switching is handled on pointerdown
+          if (e.target.closest('a, input, button')) return;
+          if (!window.getSelection().isCollapsed) return; // selecting text ≠ editing
+          const x = e.clientX, y = e.clientY;
+          const open = () => {
+            if (activeBlock || !window.getSelection().isCollapsed) return;
+            beginBlockEdit(div, sourceOffsetFromPoint(x, y, blockText(entry.content, div.__block)));
+          };
+          // On touch, wait a beat: a tap that's really the start of a text
+          // selection (long-press / double-tap word / handle drag) resolves into a
+          // non-collapsed selection during this window and we bail. Mouse is instant.
+          if (lastPointerType === 'touch') setTimeout(open, 220);
+          else open();
+        });
+        // Preview where a click would land (shown even while editing another row).
+        div.addEventListener('mousemove', (e) => {
+          const card = div.closest('.entry-card');
+          if (e.target.closest('a, input, button')) { positionRidge(card.__hoverRidge, card, null); return; }
+          positionRidge(card.__hoverRidge, card, div, true);
+        });
+        div.addEventListener('mouseleave', () => {
+          const card = div.closest('.entry-card');
+          positionRidge(card.__hoverRidge, card, null);
+        });
+      });
+      ['top', 'bottom'].forEach(where => {
+        const zone = document.createElement('div');
+        zone.className = 'new-zone' + (where === 'bottom' ? ' bottom' : '');
+        zone.__entry = entry;
+        if (where === 'top') contentEl.prepend(zone); else contentEl.appendChild(zone);
+        zone.addEventListener('click', () => {
+          if (activeBlock) return;
+          if (!window.getSelection().isCollapsed) return;
+          beginNewBlockEdit(entry, contentEl, where);
+        });
+      });
+      attachCheckboxHandlers(contentEl, entry);
+      // List blocks: map each <li> to its source line, then wire click-to-edit
+      // (a row → edit that item; the gutter, either side of the rows → edit the
+      // whole list as a block) plus the whole-list hover cue.
+      contentEl.querySelectorAll('.md-block.list-block').forEach(div => {
+        const b = div.__block;
+        const itemLines = [];
+        for (let k = b.start; k <= b.end; k++) if (isListLine(lines[k])) itemLines.push(k);
+        div.querySelectorAll('li').forEach((li, j) => { li.__lineIdx = itemLines[j]; });
+        div.addEventListener('click', (e) => {
+          if (activeBlock) return;
+          if (e.target.closest('a, input, button')) return;
+          if (!window.getSelection().isCollapsed) return;
+          const x = e.clientX, y = e.clientY, li = e.target.closest('li');
+          const open = () => {
+            if (activeBlock || !window.getSelection().isCollapsed) return;
+            if (li && li.__lineIdx != null) {
+              const line = entry.content.split('\n')[li.__lineIdx] || '';
+              const m = line.match(ITEM_RE);
+              beginItemEdit(li, div, sourceOffsetFromPoint(x, y, m ? m[2] : line));
+            } else {
+              beginBlockEdit(div, null); // gutter → edit the whole list as a block
+            }
+          };
+          if (lastPointerType === 'touch') setTimeout(open, 220);
+          else open();
+        });
+        // Preview where a click would land: a row → that row, the gutter → the whole
+        // list. Shown even while editing another row (skip the row already editing).
+        div.addEventListener('mousemove', (e) => {
+          const card = div.closest('.entry-card');
+          const li = e.target.closest('li');
+          if (e.target.closest('a, input, button') || (li && li.classList.contains('editing-item'))) {
+            positionRidge(card.__hoverRidge, card, null); return;
+          }
+          positionRidge(card.__hoverRidge, card, li || div, true);
+        });
+        div.addEventListener('mouseleave', () => {
+          const card = div.closest('.entry-card');
+          positionRidge(card.__hoverRidge, card, null);
+        });
+      });
+    }
+
+    // Keep the sticky edit toolbar above the on-screen keyboard: the keyboard
+    // overlays the layout viewport (so `bottom:0` hides behind it), but the
+    // VisualViewport shrinks — the difference is the keyboard's height, which we
+    // publish as --kb-inset for the sticky bars to sit on. 0 when no keyboard.
+    if (window.visualViewport) {
+      const vv = window.visualViewport;
+      // Only publish the keyboard inset for the sticky bars — do NOT scroll the
+      // caret here. Mobile fires resize/scroll during manual scrolling (address bar
+      // show/hide), and scrolling to the caret then would fight the user. Caret
+      // repositioning happens on input (typing) only.
+      const setKbInset = () => {
+        const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+        document.documentElement.style.setProperty('--kb-inset', inset + 'px');
+      };
+      vv.addEventListener('resize', setKbInset);
+      vv.addEventListener('scroll', setKbInset);
+      setKbInset();
+    }
+
+    // ── Inline block editor ──
+    let activeBlock = null;                 // the open block editor, if any
+    const blockSessions = new Map();        // entryId → {baseline, snapped} for coalesced history
+    let lastPointerType = 'mouse';          // to give touch taps a select-vs-edit grace window
+    document.addEventListener('pointerdown', (e) => { lastPointerType = e.pointerType || 'mouse'; }, true);
+
+    // The edit chrome (blue ridge + handle) always lives on the card's RIGHT edge.
+
+    // Draw `ridge` on `card`'s right edge, sized to `targetEl` (the edited or hovered
+    // block/row). Anchored to the card — not the element — so it reaches the card edge
+    // cleanly even for deeply-nested list rows. `soft` = the lighter hover preview.
+    // Each card has two: __ridge (solid, the open editor) and __hoverRidge (the
+    // where-you'd-land preview), so the preview shows even while a row is being edited.
+    function positionRidge(ridge, card, targetEl, soft) {
+      if (!ridge) return;
+      if (!targetEl || !targetEl.isConnected) { ridge.style.display = 'none'; return; }
+      const cr = card.getBoundingClientRect();
+      const tr = targetEl.getBoundingClientRect();
+      ridge.style.top = (tr.top - cr.top - card.clientTop) + 'px';
+      ridge.style.height = tr.height + 'px';
+      ridge.className = 'edit-ridge' + (soft ? ' soft' : '');
+      ridge.style.display = 'block';
+    }
+    // The handle tab sticks to the top of a TALL editor (rides down as it scrolls),
+    // but when the line is shorter than the tab it's centered on the line instead of
+    // hanging off the bottom — so the handle stays balanced on the row.
+    function layoutHandleTab() {
+      if (!activeBlock || !activeBlock.tabEl) return;
+      const railH = activeBlock.wrap.getBoundingClientRect().height;
+      const tab = activeBlock.tabEl;
+      const tabH = tab.offsetHeight;
+      if (tabH > railH) {
+        tab.style.position = 'static';
+        tab.style.marginTop = ((railH - tabH) / 2) + 'px';
+      } else {
+        tab.style.position = 'sticky';
+        tab.style.marginTop = '0px';
+      }
+    }
+    // Reposition the open editor's ridge + handle when the layout shifts (typing grows
+    // the editor; zoom/resize reflows). Scroll doesn't move them — they ride the card.
+    const relayoutActiveEdit = () => {
+      if (!activeBlock) return;
+      positionRidge(activeBlock.card.__ridge, activeBlock.card, activeBlock.wrap, false);
+      layoutHandleTab();
+    };
+    window.addEventListener('resize', relayoutActiveEdit);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', relayoutActiveEdit);
+
+    // Copy: strip markdown to plain text — drop list markers/checkboxes, heading #,
+    // blockquote >, and inline bold/italic/strike/code/link syntax. Images are left
+    // as `![alt](img:id)` so the caller can still resolve them to the actual picture.
+    function stripToPlainText(md) {
+      const lines = (md || '').split('\n').map(line => line
+        .replace(/^\s*#{1,6}\s+/, '')
+        .replace(/^\s*>+\s?/, '')
+        .replace(/^(\s*)(?:[-*+]|\d+\.)\s+(?:\[[ xX]\]\s*|\([ xX]\)\s*)?/, '$1'));
+      return lines.join('\n')
+        .replace(/(!?)\[([^\]]*)\]\(([^)]*)\)/g, (m, bang, txt) => bang ? m : txt) // links→text, keep images
+        .replace(/(\*\*|__)(.*?)\1/g, '$2')
+        .replace(/(\*|_)([^*_]+?)\1/g, '$2')
+        .replace(/~~(.*?)~~/g, '$2')
+        .replace(/`([^`]+)`/g, '$1');
+    }
+
+    // Persist a whole new content string for an entry, snapshotting ONE history
+    // version per editing session (the pre-session content) and garbage-collecting
+    // unreferenced images — the block-editing analog of saveEdit.
+    function applyEntryContent(entry, newContent, session) {
+      if (newContent === entry.content) return false;
+      const archived = session.snapped ? null : { content: session.baseline, editedAt: new Date().toISOString() };
+      if (archived) session.snapped = true;
+      const allImages = Object.assign({}, entry.images, pendingImages.get(entry.id));
+      // Retain images referenced by the new content OR any kept history version,
+      // including THIS session's archived baseline (it lives in Firestore history
+      // even after the first commit, so keep its images across later commits).
+      const histForGC = (entry.editHistory || []).slice();
+      if (session.snapped) histForGC.push({ content: session.baseline });
+      const refs = collectImageRefs(newContent, histForGC);
+      const images = {};
+      refs.forEach(id => { if (allImages[id]) images[id] = allImages[id]; });
+      pendingImages.delete(entry.id);
+      const hadImages = entry.images && Object.keys(entry.images).length > 0;
+      entry.content = newContent;
+      entry.images = images;
+      // Do NOT mutate entry.editHistory locally — leaving it stale lets the Firestore
+      // echo detect the change and rebuild the card, so `versions`/`hasHistory`
+      // refresh and the archived version is retrievable from history.
+      const payload = { content: newContent };
+      if (archived) payload.editHistory = arrayUnion(archived);
+      if (refs.size || hadImages) payload.images = images;
+      updateDoc(doc(db, 'entries', entry.id), payload).catch(err => console.error('block save failed', err));
+      return true;
+    }
+
+    // Splice a block's [start,end] line range with new source (empty = delete the
+    // block, eating one adjacent blank line so no double gap remains).
+    function applyBlockEdit(entry, b, newSrc, session) {
+      const lines = entry.content.split('\n');
+      const clean = newSrc.replace(/\n+$/, '');
+      if (!clean.trim()) {
+        let s = b.start, e = b.end;
+        if (e + 1 < lines.length && isBlank(lines[e + 1])) e++;
+        else if (s > 0 && isBlank(lines[s - 1])) s--;
+        lines.splice(s, e - s + 1);
+      } else {
+        lines.splice(b.start, b.end - b.start + 1, ...clean.split('\n'));
+      }
+      applyEntryContent(entry, lines.join('\n'), session);
+    }
+
+    function sessionFor(entry) {
+      let s = blockSessions.get(entry.id);
+      if (!s) { s = { baseline: entry.content, snapped: false }; blockSessions.set(entry.id, s); }
+      return s;
+    }
+
+    // ── Drag-to-reorder + arrow navigation (Phase 3) ──
+
+    // Persist a reorder: content + image GC, but NO history version (a pure move,
+    // like a checkbox toggle). Text-changing edits still go through applyEntryContent.
+    function reorderEntryContent(entry, newContent) {
+      if (newContent === entry.content) return false;
+      const allImages = Object.assign({}, entry.images, pendingImages.get(entry.id));
+      const refs = collectImageRefs(newContent, entry.editHistory || []);
+      const images = {};
+      refs.forEach(id => { if (allImages[id]) images[id] = allImages[id]; });
+      pendingImages.delete(entry.id);
+      const hadImages = entry.images && Object.keys(entry.images).length > 0;
+      entry.content = newContent;
+      entry.images = images;
+      const payload = { content: newContent };
+      if (refs.size || hadImages) payload.images = images;
+      updateDoc(doc(db, 'entries', entry.id), payload).catch(err => console.error('reorder save failed', err));
+      return true;
+    }
+
+    // The contiguous run of sibling list <li>s (each carrying __lineIdx) around `li`.
+    function listItemRun(li) {
+      const ul = li.parentElement;
+      let cur = [];
+      for (const child of ul.children) {
+        if ((child.tagName === 'LI' && child.__lineIdx != null) || child === li) cur.push(child);
+        else { if (cur.includes(li)) break; cur = []; }
+      }
+      return cur.includes(li) ? cur : [];
+    }
+
+    // Reorder list rows (each = its source line + more-indented children) within a
+    // contiguous region, given `lines` and the new DOM order. Returns the new
+    // content string, or null if the rows don't tile a contiguous region.
+    function reorderLines(lines, newOrder) {
+      const indentOf = l => l.match(/^\s*/)[0].length;
+      const ranges = newOrder.map(row => {
+        const start = row.__lineIdx;
+        if (start == null) return null;
+        const indent = indentOf(lines[start]);
+        let end = start;
+        while (end + 1 < lines.length && lines[end + 1].trim() && indentOf(lines[end + 1]) > indent) end++;
+        return { start, end };
+      });
+      if (ranges.some(r => !r)) return null;
+      const sorted = [...ranges].sort((a, b) => a.start - b.start);
+      const contiguous = sorted.every((b, i) => i === 0 || b.start === sorted[i - 1].end + 1);
+      if (!contiguous) return null;
+      return [
+        ...lines.slice(0, sorted[0].start),
+        ...ranges.flatMap(r => lines.slice(r.start, r.end + 1)),
+        ...lines.slice(sorted[sorted.length - 1].end + 1),
+      ].join('\n');
+    }
+
+    // The ONE drag engine, shared by block wraps and list rows. Transform-based
+    // reorder of a run of sibling elements — knows nothing about what it drags:
+    // the caller passes the `run` and an onReorder(newOrder) that commits the move.
+    // The dragged element is the LIVE editor, so its look never changes mid-drag.
+    function startReorderDrag(e, capEl, dragEl, run, onReorder) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (run.length < 2) return;
+      const li = dragEl;
+      e.preventDefault();
+      capEl.setPointerCapture(e.pointerId);
+
+      const origIdx = run.indexOf(li);
+      const others = run.filter(item => item !== li);
+      const anchor = run[run.length - 1].nextSibling;
+      const mids = others.map(o => {
+        const r = o.getBoundingClientRect();
+        return r.top + r.height / 2 + window.scrollY;
+      });
+      const liRect = li.getBoundingClientRect();
+      const gap = Math.max(0, run[1].getBoundingClientRect().top - run[0].getBoundingClientRect().bottom);
+      const rowShift = liRect.height + gap;
+      const minDy = run[0].getBoundingClientRect().top - liRect.top;
+      const maxDy = run[run.length - 1].getBoundingClientRect().bottom - liRect.bottom;
+      const startPageY = e.clientY + window.scrollY;
+      let dragging = false, lastClientY = e.clientY, curIdx = origIdx, rafId = null;
+
+      const update = () => {
+        const pageY = lastClientY + window.scrollY;
+        const dy = Math.max(minDy, Math.min(maxDy, pageY - startPageY));
+        li.style.transform = `translateY(${dy}px)`;
+        const idx = mids.filter(m => m < pageY).length;
+        if (idx !== curIdx) {
+          curIdx = idx;
+          others.forEach((o, i) => {
+            if (i >= idx && i < origIdx) o.style.transform = `translateY(${rowShift}px)`;
+            else if (i >= origIdx && i < idx) o.style.transform = `translateY(${-rowShift}px)`;
+            else o.style.transform = '';
+          });
+        }
+      };
+      const tick = () => {
+        const margin = 60, speed = 8;
+        if (lastClientY < margin) window.scrollBy(0, -speed);
+        else if (lastClientY > window.innerHeight - margin) window.scrollBy(0, speed);
+        update();
+        rafId = requestAnimationFrame(tick);
+      };
+      const onMove = (ev) => {
+        lastClientY = ev.clientY;
+        if (!dragging) {
+          if (Math.abs(ev.clientY - e.clientY) < 4) return;
+          dragging = true;
+          li.classList.add('dragging');
+          rafId = requestAnimationFrame(tick);
+        }
+        update();
+      };
+      const finish = (commit) => {
+        capEl.removeEventListener('pointermove', onMove);
+        capEl.removeEventListener('pointerup', onUp);
+        capEl.removeEventListener('pointercancel', onCancel);
+        if (rafId) cancelAnimationFrame(rafId);
+        li.classList.remove('dragging');
+        run.forEach(item => { item.style.transform = ''; });
+        if (!dragging) return;
+        const newOrder = (commit && curIdx !== origIdx)
+          ? [...others.slice(0, curIdx), li, ...others.slice(curIdx)] : null;
+        onReorder(newOrder, anchor);
+      };
+      const onUp = () => finish(true);
+      const onCancel = () => finish(false);
+      capEl.addEventListener('pointermove', onMove);
+      capEl.addEventListener('pointerup', onUp);
+      capEl.addEventListener('pointercancel', onCancel);
+    }
+
+    // Build the unified pop-out edit handle for an open editor (block wrap or list
+    // row): a full-height rail on the card's right edge carrying one blue tab with the
+    // drag grip (reorder), then optional copy-section + trash-section icons. onCopy()
+    // returns the text to copy; onDelete removes the section. The trash's two-tap
+    // cooldown tints the whole tab rose.
+    function makeEditHandle(dragEl, { getRun, onReorder, onCopy, onDelete }) {
+      const handle = document.createElement('div');
+      handle.className = 'edit-handle';
+      const tab = document.createElement('div');
+      tab.className = 'edit-handle-tab';
+      handle.appendChild(tab);
+
+      // Order: copy (top), grip (middle), trash (bottom) — grip centered in the stack.
+      if (onCopy) {
+        const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
+        copyBtn.className = 'edit-handle-btn';
+        copyBtn.title = 'Copy';
+        copyBtn.innerHTML = ICON.copy;
+        copyBtn.addEventListener('mousedown', (e) => e.preventDefault()); // keep editor focus
+        copyBtn.addEventListener('click', async (e) => {
+          e.preventDefault(); e.stopPropagation();
+          try { await navigator.clipboard.writeText(onCopy() || ''); flashCopied(copyBtn); }
+          catch (err) { console.error('section copy failed', err); }
+        });
+        tab.appendChild(copyBtn);
+      }
+
+      const grip = document.createElement('div');
+      grip.className = 'edit-handle-grip';
+      grip.title = 'Drag to reorder';
+      grip.innerHTML = ICON.grip;
+      grip.addEventListener('contextmenu', (ev) => ev.preventDefault());
+      grip.addEventListener('pointerdown', (ev) => {
+        if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+        ev.preventDefault(); // keep the editor focused during the drag
+        startReorderDrag(ev, dragEl, dragEl, getRun(), onReorder);
+      });
+      tab.appendChild(grip);
+
+      if (onDelete) {
+        const trashBtn = document.createElement('button');
+        trashBtn.type = 'button';
+        trashBtn.className = 'edit-handle-btn';
+        trashBtn.title = 'Delete';
+        trashBtn.innerHTML = ICON.trash;
+        confirmButton(trashBtn, ICON.trash, onDelete); // arms → tints just this button rose
+        tab.appendChild(trashBtn);
+      }
+      return handle;
+    }
+
+    // Ordered editable units as source-line indices: each non-list block is one
+    // unit (its start line), each list row is its own unit.
+    function editUnitStarts(content) {
+      const lines = content.split('\n');
+      const starts = [];
+      splitBlocks(content).forEach(b => {
+        if (isListLine(lines[b.start])) {
+          for (let k = b.start; k <= b.end; k++) if (isListLine(lines[k])) starts.push(k);
+        } else starts.push(b.start);
+      });
+      return starts;
+    }
+
+    // The unit adjacent (dir = ±1) to the one starting at `curStart`, described by
+    // its text so it can be re-found after the current editor commits. Null at the
+    // document edge.
+    function neighborUnit(entry, curStart, dir) {
+      const lines = entry.content.split('\n');
+      const starts = editUnitStarts(entry.content);
+      const i = starts.indexOf(curStart);
+      if (i === -1) return null;
+      const ts = starts[i + dir];
+      if (ts == null) return null;
+      if (isListLine(lines[ts])) return { kind: 'item', lineIdx: ts, text: itemTextOf(lines[ts]).trim() };
+      const b = splitBlocks(entry.content).find(x => x.start <= ts && ts <= x.end);
+      return { kind: 'block', start: b.start, text: lines.slice(b.start, b.end + 1).join('\n') };
+    }
+
+    // Re-find a block after a re-render: by its (stable, unique) start line first, then
+    // by text — text alone collides on identical paragraphs (e.g. repeated `---`).
+    function findBlockUnit(contentEl, start, text) {
+      const blocks = [...contentEl.querySelectorAll('.md-block')];
+      return (start != null && blocks.find(x => x.__block && x.__block.start === start))
+        || blocks.find(x => blockText(x.__entry.content, x.__block) === text) || null;
+    }
+
+    // Open a neighbor unit after commit + re-render. Down → caret 0, Up → caret at end.
+    function openNeighbor(entry, contentEl, target, dir) {
+      const caret = dir === 1 ? 0 : null;
+      if (target.kind === 'item') {
+        const li = findItemLiByIdx(contentEl, target.lineIdx) || findItemLi(contentEl, target.text);
+        if (li) beginItemEdit(li, li.closest('.md-block'), caret);
+      } else {
+        const blk = findBlockUnit(contentEl, target.start, target.text);
+        if (blk) beginBlockEdit(blk, caret);
+      }
+    }
+
+    // Build a small icon button for the sticky edit toolbar (format tools on the
+    // left, then esc-hint, then cancel ✕ + save ✓ on the right).
+    const iconBtn = (icon, title, cls) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.innerHTML = icon;
+      b.title = title;
+      if (cls) b.className = cls;
+      return b;
+    };
+
+    // Build the edit toolbar: format tools on the left, then esc-hint, then the
+    // right group (e.g. trash/cancel/save) pushed over. Shared by the block,
+    // whole-note and composer editors.
+    // toolFactories defaults to the full 5; item editors pass a shorter list
+    // (no heading/list — those don't apply to a single list row's text).
+    const ALL_TOOLS = [makeHeaderButton, makeFormatButton, makeCycleButton, makeLinkButton, makeImageButton, makeEmojiButton];
+    function mountEditTools(actions, ta, rightButtons, escHint, toolFactories) {
+      actions.replaceChildren();
+      (toolFactories || ALL_TOOLS).forEach(f => actions.append(f(ta)));
+      if (escHint) actions.append(escHint);
+      rightButtons[0].style.marginLeft = 'auto'; // push the right group over
+      rightButtons.forEach(b => actions.append(b));
+    }
+
+    // The bottom toolbar carries only format tools + cancel/save now; section
+    // delete + copy moved onto the pop-out edit handle (see makeEditHandle).
+    function mountBlockToolbar(actions, ta, { onSave, onCancel }, toolFactories) {
+      const escHint = document.createElement('span');
+      escHint.className = 'esc-hint';
+      const cancelBtn = iconBtn(ICON.close, 'Cancel', 'btn-delete');
+      cancelBtn.addEventListener('click', onCancel);
+      const saveBtn = iconBtn(ICON.save, 'Save', 'btn-edit btn-save');
+      saveBtn.addEventListener('click', onSave);
+      mountEditTools(actions, ta, [cancelBtn, saveBtn], escHint, toolFactories);
+      return escHint;
+    }
+
+    // Shared editor scaffold: a .block-edit textarea inside a .block-edit-wrap,
+    // with autosize + caret-keep + image paste + the two-step-Esc keydown wired.
+    // `onCommit(save, {keepSession})` closes the editor.
+    function wireBlockEditor(ta, order, initialSrc, onCommit, navCtx) {
+      ta._imgKey = activeBlock.entry.id;
+      ta._imgOrder = order;
+      autosize(ta);
+      ta.focus();
+      requestAnimationFrame(() => { autosize(ta); keepCaretVisible(ta); });
+      ta.addEventListener('input', () => { autosize(ta); keepCaretVisible(ta); relayoutActiveEdit(); });
+      attachImageInput(ta);
+      let escPending = false;
+      ta.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          const dirty = expandFromEdit(ta.value, order).replace(/\n+$/, '') !== initialSrc;
+          if (!dirty || escPending) { onCommit(false); return; }
+          escPending = true;
+          activeBlock.escHint.textContent = 'Esc again to discard';
+          setTimeout(() => { escPending = false; if (activeBlock) activeBlock.escHint.textContent = ''; }, 3000);
+          return;
+        }
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onCommit(true); return; }
+        if (e.key === 'Backspace' && navCtx?.mergePrev && navCtx.mergePrev(e)) return;
+        // Up/Down at the first/last line hop to the neighbouring editor, saving
+        // this one on the way; mid-block they just move the caret; at the note's
+        // edge they do nothing.
+        if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && navCtx) {
+          const dir = e.key === 'ArrowDown' ? 1 : -1;
+          const collapsed = ta.selectionStart === ta.selectionEnd;
+          const atEdge = collapsed && (dir === 1
+            ? !ta.value.slice(ta.selectionEnd).includes('\n')
+            : !ta.value.slice(0, ta.selectionStart).includes('\n'));
+          if (!atEdge) return;
+          const target = neighborUnit(navCtx.entry, navCtx.unitStart, dir);
+          if (!target) return;
+          e.preventDefault();
+          onCommit(true, { keepSession: true });
+          openNeighbor(navCtx.entry, navCtx.contentEl, target, dir);
+          return;
+        }
+        if (e.key === 'Enter') handleListContinuation(e, ta);
+      });
+    }
+
+    // Edit an existing block. `caret` is a source offset (null = end of block).
+    function beginBlockEdit(blockDiv, caret) {
+      const entry = blockDiv.__entry;
+      const contentEl = blockDiv.closest('.entry-content');
+      const card = blockDiv.closest('.entry-card');
+      const actions = card.querySelector('.entry-actions');
+      const b = blockDiv.__block;
+      const src = blockText(entry.content, b);
+      const { text: collapsed, order } = collapseForEdit(src);
+
+      const wrap = document.createElement('div');
+      wrap.className = 'block-edit-wrap';
+      const ta = document.createElement('textarea');
+      ta.className = 'block-edit';
+      if (isFence(src.split('\n')[0])) ta.classList.add('code');
+      ta.value = collapsed;
+      ta.rows = 1;
+      wrap.appendChild(ta);
+      blockDiv.replaceWith(wrap);
+
+      const session = sessionFor(entry);
+      activeBlock = { wrap, ta, entry, contentEl, card, block: b, order, session, escHint: null };
+      activeEdits.set(entry.id, { card, block: true }); // shield from snapshot re-renders
+      card.classList.add('editing');
+
+      const commit = (save, opts = {}) => {
+        if (activeBlock !== current) return;
+        activeBlock = null;
+        activeEdits.delete(entry.id);
+        if (save) applyBlockEdit(entry, b, expandFromEdit(ta.value, order), session);
+        if (!opts.keepSession) blockSessions.delete(entry.id);
+        card.__toView();
+      };
+      const current = activeBlock;
+      current.commit = commit;
+      current.escHint = mountBlockToolbar(actions, ta, {
+        onSave: () => commit(true),
+        onCancel: () => commit(false),
+      });
+      // Section delete lives on the edit handle now, not the bottom toolbar.
+      const deleteBlock = () => { if (activeBlock === current) { activeBlock = null; activeEdits.delete(entry.id); applyBlockEdit(entry, b, '', session); blockSessions.delete(entry.id); card.__toView(); } };
+
+      // Backspace at the very start merges this block into the previous one: its
+      // text is appended to the previous block's source (blank separator dropped,
+      // caret at the join) — the block-level analog of the list-row merge.
+      const mergeIntoPrev = (e) => {
+        if (ta.selectionStart !== 0 || ta.selectionEnd !== 0) return false;
+        const blocks = splitBlocks(entry.content);
+        const idx = blocks.findIndex(x => x.start === b.start);
+        if (idx <= 0) return false; // first block → nothing before to merge into
+        e.preventDefault();
+        const prev = blocks[idx - 1];
+        const lines = entry.content.split('\n');
+        const prevText = lines.slice(prev.start, prev.end + 1).join('\n');
+        const thisText = expandFromEdit(ta.value, order).replace(/\n+$/, '');
+        const caretPos = prevText.length;
+        const merged = prevText + thisText;
+        const newContent = [...lines.slice(0, prev.start), ...merged.split('\n'), ...lines.slice(b.end + 1)].join('\n');
+        if (activeBlock !== current) return true;
+        activeBlock = null; activeEdits.delete(entry.id);
+        applyEntryContent(entry, newContent, session);
+        card.__toView();
+        const blk = [...contentEl.querySelectorAll('.md-block')].find(x => x.__block && x.__block.start === prev.start);
+        if (blk) beginBlockEdit(blk, caretPos);
+        return true;
+      };
+
+      wireBlockEditor(ta, order, src, commit, { entry, contentEl, unitStart: b.start, mergePrev: mergeIntoPrev });
+      const cc = order.length ? collapsed.length : Math.min(caret == null ? collapsed.length : caret, collapsed.length);
+      ta.setSelectionRange(cc, cc);
+
+      // Edit handle: drag to reorder this block among its siblings (drags the LIVE
+      // editor; on drop, commit the move + any edit and re-open at the new spot),
+      // plus copy-section and delete-section buttons.
+      const handle = makeEditHandle(wrap, {
+        onCopy: () => resolveImageRefs(stripToPlainText(expandFromEdit(ta.value, order).replace(/\n+$/, '')), entry.images),
+        onDelete: deleteBlock,
+        getRun: () => [...contentEl.querySelectorAll('.md-block, .block-edit-wrap')],
+        onReorder: (newOrder) => {
+          if (!newOrder || activeBlock !== current) return;
+          const selStart = ta.selectionStart, selEnd = ta.selectionEnd;
+          activeBlock = null; activeEdits.delete(entry.id);
+          const lines = entry.content.split('\n');
+          const wantText = expandFromEdit(ta.value, order).replace(/\n+$/, '');
+          const newContent = newOrder
+            .map(el => el === wrap ? wantText : lines.slice(el.__block.start, el.__block.end + 1).join('\n'))
+            .filter(part => part.trim())
+            .join('\n\n');
+          if (wantText !== src) applyEntryContent(entry, newContent, session); // edit → history
+          else reorderEntryContent(entry, newContent);                        // pure move → none
+          card.__toView();
+          if (wantText.trim()) {
+            const blk = [...contentEl.querySelectorAll('.md-block')].find(x => blockText(x.__entry.content, x.__block) === wantText);
+            if (blk) {
+              beginBlockEdit(blk, selStart);
+              if (activeBlock && activeBlock.ta.setSelectionRange) activeBlock.ta.setSelectionRange(selStart, selEnd);
+            }
+          }
+        },
+      });
+      wrap.appendChild(handle);
+      current.tabEl = handle.querySelector('.edit-handle-tab');
+      positionRidge(card.__ridge, card, wrap, false);
+      positionRidge(card.__hoverRidge, card, null); // clear the where-you'd-land preview
+      requestAnimationFrame(relayoutActiveEdit);
+    }
+
+    // A brand-new paragraph above the first / below the last block.
+    function beginNewBlockEdit(entry, contentEl, where) {
+      const card = contentEl.closest('.entry-card');
+      const actions = card.querySelector('.entry-actions');
+      const wrap = document.createElement('div');
+      wrap.className = 'block-edit-wrap';
+      const ta = document.createElement('textarea');
+      ta.className = 'block-edit';
+      ta.rows = 1;
+      wrap.appendChild(ta);
+      const zTop = contentEl.querySelector('.new-zone:not(.bottom)');
+      const zBot = contentEl.querySelector('.new-zone.bottom');
+      if (where === 'top') (zTop ? zTop.after(wrap) : contentEl.prepend(wrap));
+      else (zBot ? zBot.before(wrap) : contentEl.appendChild(wrap));
+
+      const session = sessionFor(entry);
+      activeBlock = { wrap, ta, entry, contentEl, card, block: null, order: [], session, escHint: null };
+      activeEdits.set(entry.id, { card, block: true });
+      card.classList.add('editing');
+
+      const commit = (save, opts = {}) => {
+        if (activeBlock !== current) return;
+        activeBlock = null;
+        activeEdits.delete(entry.id);
+        if (save) {
+          const v = expandFromEdit(ta.value, ta._imgOrder).trim();
+          if (v) applyEntryContent(entry, where === 'top' ? v + '\n\n' + entry.content : entry.content + '\n\n' + v, session);
+        }
+        if (!opts.keepSession) blockSessions.delete(entry.id);
+        card.__toView();
+      };
+      const current = activeBlock;
+      current.commit = commit;
+      current.escHint = mountBlockToolbar(actions, ta, {
+        onSave: () => commit(true),
+        onCancel: () => commit(false),
+      });
+      // Backspace at the start cancels this brand-new block back into the previous
+      // section: its text (if any) appends to the last existing block, caret at the
+      // join — the new-block analog of the block editor's mergeIntoPrev.
+      const mergeNewIntoPrev = (e) => {
+        if (ta.selectionStart !== 0 || ta.selectionEnd !== 0) return false;
+        if (where !== 'bottom') return false; // a new TOP block has nothing before it
+        const blocks = splitBlocks(entry.content);
+        if (!blocks.length) return false;      // empty note → nothing to merge into
+        e.preventDefault();
+        if (activeBlock !== current) return true;
+        activeBlock = null; activeEdits.delete(entry.id);
+        const prev = blocks[blocks.length - 1];
+        const lines = entry.content.split('\n');
+        const prevText = lines.slice(prev.start, prev.end + 1).join('\n');
+        const thisText = expandFromEdit(ta.value, ta._imgOrder).replace(/\n+$/, '');
+        if (thisText) applyEntryContent(entry, [...lines.slice(0, prev.start), ...(prevText + thisText).split('\n')].join('\n'), session);
+        card.__toView();
+        const blk = [...contentEl.querySelectorAll('.md-block')].find(x => x.__block && x.__block.start === prev.start);
+        if (blk) beginBlockEdit(blk, prevText.length);
+        return true;
+      };
+      wireBlockEditor(ta, [], '', commit, { entry, contentEl, mergePrev: mergeNewIntoPrev });
+    }
+
+    // ── Per-item editing (list rows) ──
+    // prefix = the marker (+ checkbox syntax); group 2 = the row's editable text.
+    const ITEM_RE = /^(\s*(?:[-*+]|\d+\.)\s+(?:\[[ xX]\]\s*|\([ xX]\)\s*)?)(.*)$/;
+    const itemTextOf = (line) => { const m = (line || '').match(ITEM_RE); return m ? m[2] : (line || ''); };
+
+    // Re-find a list <li> after a re-render by its source text (line indices shift).
+    function findItemLi(contentEl, text) {
+      return [...contentEl.querySelectorAll('.md-block.list-block li')].find(li => {
+        if (li.__lineIdx == null) return false;
+        const ln = li.closest('.md-block').__entry.content.split('\n')[li.__lineIdx];
+        return itemTextOf(ln).trim() === text;
+      });
+    }
+    function findItemLiByIdx(contentEl, idx) {
+      if (idx == null) return null;
+      return [...contentEl.querySelectorAll('.md-block.list-block li')].find(li => li.__lineIdx === idx) || null;
+    }
+
+    // Edit a single list row: swap its text for a bare input, keep the checkbox.
+    function beginItemEdit(li, blockDiv, caret) {
+      const entry = blockDiv.__entry;
+      const contentEl = blockDiv.closest('.entry-content');
+      const card = blockDiv.closest('.entry-card');
+      const actions = card.querySelector('.entry-actions');
+      const lineIdx = li.__lineIdx;
+      const line = entry.content.split('\n')[lineIdx] || '';
+      const m = line.match(ITEM_RE);
+      let prefix = m ? m[1] : '';            // marker + checkbox; the toggle edits this
+      const text = m ? m[2] : line;
+      const { text: collapsed, order } = collapseForEdit(text);
+      // Soft line breaks inside a row are stored as <br> (keeps the one-source-line-per-
+      // row invariant) but shown as real newlines while editing; readSrc re-encodes them
+      // on every commit path so a Shift+Enter break round-trips.
+      const collapsedShown = collapsed.replace(/<br\s*\/?>/gi, '\n');
+
+      // A textarea (not an input) so long item text wraps + grows as you type,
+      // like the rendered row; Enter is intercepted below for the split.
+      const input = document.createElement('textarea');
+      input.className = 'item-edit';
+      input.rows = 1;
+      input.value = collapsedShown;
+      const readSrc = () => expandFromEdit(input.value, order).replace(/\n/g, '<br>');
+      const span = li.querySelector('.todo-text');
+      if (span) span.replaceWith(input);
+      else {
+        // Plain row: keep a nested sub-list intact — drop only the leading text
+        // nodes and put the input before the sub-list (or at the end if none).
+        const nested = li.querySelector(':scope > ul, :scope > ol');
+        while (li.firstChild && li.firstChild !== nested) li.removeChild(li.firstChild);
+        if (nested) li.insertBefore(input, nested); else li.appendChild(input);
+      }
+      li.classList.add('editing-item');
+
+      // Keep the checkbox toggleable while editing: clone it (drops the view-mode
+      // change handler that would re-render), and on toggle rewrite the marker in
+      // `prefix` + restyle the row — no re-render, so the edit is untouched.
+      const cb = li.querySelector('input[type="checkbox"]');
+      if (cb) {
+        const freshCb = cb.cloneNode(false);
+        cb.replaceWith(freshCb);
+        freshCb.disabled = false;
+        freshCb.addEventListener('mousedown', (e) => e.preventDefault()); // keep input focus
+        freshCb.addEventListener('change', () => {
+          const on = freshCb.checked;
+          prefix = prefix.replace(/\(( |x|X)\)/, on ? '(x)' : '( )').replace(/\[( |x|X)\]/, on ? '[x]' : '[ ]');
+          li.classList.toggle('checked', on);
+          input.focus();
+        });
+      }
+
+      const session = sessionFor(entry);
+      activeBlock = { wrap: li, ta: input, entry, contentEl, card, isItem: true, lineIdx, order, session, escHint: null };
+      activeEdits.set(entry.id, { card, block: true });
+      card.classList.add('editing');
+
+      const commit = (save, opts = {}) => {
+        if (activeBlock !== current) return;
+        activeBlock = null;
+        activeEdits.delete(entry.id);
+        if (save) {
+          const v = readSrc().trim();
+          // Keep the row even when empty (an intentional blank item) — only
+          // Backspace-merge and the trash button remove a row.
+          commitItemLine(entry, lineIdx, prefix + v, session);
+        }
+        if (!opts.keepSession) blockSessions.delete(entry.id);
+        card.__toView();
+      };
+      const current = activeBlock;
+      current.commit = commit;
+      current.escHint = mountBlockToolbar(actions, input, {
+        onSave: () => commit(true),
+        onCancel: () => commit(false),
+      }, [makeFormatButton, makeLinkButton, makeImageButton, makeEmojiButton]);
+      // Row delete lives on the edit handle now, not the bottom toolbar.
+      const deleteItem = () => { if (activeBlock === current) { activeBlock = null; activeEdits.delete(entry.id); commitItemLine(entry, lineIdx, null, session); blockSessions.delete(entry.id); card.__toView(); } };
+
+      input._imgKey = entry.id;
+      input._imgOrder = order;
+      input.focus();
+      const cc = order.length ? collapsedShown.length : Math.min(caret == null ? collapsedShown.length : caret, collapsedShown.length);
+      input.setSelectionRange(cc, cc);
+      autosize(input);
+      requestAnimationFrame(() => { autosize(input); keepCaretVisible(input); });
+      input.addEventListener('input', () => { autosize(input); keepCaretVisible(input); relayoutActiveEdit(); });
+      attachImageInput(input);
+      positionRidge(card.__ridge, card, li, false);
+      positionRidge(card.__hoverRidge, card, null); // clear the where-you'd-land preview
+
+      // Edit handle: drag to reorder this row among its list siblings (on drop,
+      // commit any text edit + the move and re-open the row moved), plus copy-row
+      // and delete-row buttons.
+      if (lineIdx != null) {
+        const handle = makeEditHandle(li, {
+          onCopy: () => resolveImageRefs(stripToPlainText(prefix + expandFromEdit(input.value, order)), entry.images),
+          onDelete: deleteItem,
+          getRun: () => listItemRun(li),
+          onReorder: (newOrder) => {
+            if (!newOrder || activeBlock !== current) return;
+            activeBlock = null; activeEdits.delete(entry.id);
+            const edited = readSrc() !== text;
+            let lines = entry.content.split('\n');
+            if (edited) lines[lineIdx] = prefix + readSrc().trim(); // keep row even if empty
+            const reordered = reorderLines(lines, newOrder);
+            const finalContent = reordered != null ? reordered : lines.join('\n');
+            if (edited) applyEntryContent(entry, finalContent, session); // edit → history
+            else if (reordered != null) reorderEntryContent(entry, finalContent); // move → none
+            // Reordering a row lands in view mode — the row's text can be a duplicate,
+            // so re-finding "the row I moved" by text would re-open the wrong one.
+            card.__toView();
+          },
+        });
+        li.appendChild(handle);
+        current.tabEl = handle.querySelector('.edit-handle-tab');
+        requestAnimationFrame(relayoutActiveEdit);
+      }
+
+      // Split at the caret into a new row below; merge into the previous row on
+      // Backspace at the start — reopening the resulting row keeps you editing.
+      // Prefer the (known, unique) line index; text collides on empty/dup rows.
+      const reopenItem = (targetLineIdx, targetText, targetCaret) => {
+        const t = findItemLiByIdx(contentEl, targetLineIdx) || findItemLi(contentEl, targetText);
+        if (t) beginItemEdit(t, t.closest('.md-block'), targetCaret);
+      };
+      let escPending = false;
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          const dirty = readSrc().trim() !== text.trim() || prefix !== (m ? m[1] : '');
+          if (!dirty || escPending) { commit(false); return; }
+          escPending = true;
+          current.escHint.textContent = 'Esc again to discard';
+          setTimeout(() => { escPending = false; if (activeBlock === current) current.escHint.textContent = ''; }, 3000);
+          return;
+        }
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commit(true); return; }
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+          const dir = e.key === 'ArrowDown' ? 1 : -1;
+          // Only hop to the neighbor from the true start/end; otherwise let the
+          // caret move within the item (it can wrap to several visual lines).
+          const atEdge = input.selectionStart === input.selectionEnd &&
+            (dir === 1 ? input.selectionEnd === input.value.length : input.selectionStart === 0);
+          if (!atEdge) return;
+          const target = neighborUnit(entry, lineIdx, dir);
+          if (!target) return;
+          e.preventDefault();
+          if (activeBlock !== current) return;
+          activeBlock = null; activeEdits.delete(entry.id);
+          // Save on the way out but keep even an empty row (don't delete on nav).
+          if (readSrc() !== text) commitItemLine(entry, lineIdx, prefix + readSrc().trim(), session);
+          card.__toView();
+          openNeighbor(entry, contentEl, target, dir);
+          return;
+        }
+        if (e.key === 'Enter' && !e.shiftKey) {   // Shift+Enter falls through → soft line break
+          e.preventDefault();
+          if (activeBlock !== current) return;
+          activeBlock = null; activeEdits.delete(entry.id);
+          const before = expandFromEdit(input.value.slice(0, input.selectionStart ?? input.value.length), order).replace(/\n/g, '<br>');
+          const after = expandFromEdit(input.value.slice(input.selectionEnd ?? input.value.length), order).replace(/\n/g, '<br>');
+          const newPrefix = prefix.replace(/\((?:x|X| )\)/, '( )').replace(/\[(?:x|X| )\]/, '[ ]');
+          const lines = entry.content.split('\n');
+          lines[lineIdx] = prefix + before.trim();
+          lines.splice(lineIdx + 1, 0, newPrefix + after.trim());
+          applyEntryContent(entry, lines.join('\n'), session);
+          card.__toView();
+          reopenItem(lineIdx + 1, after.trim(), 0); // the new row
+          return;
+        }
+        if (e.key === 'Backspace' && input.selectionStart === 0 && input.selectionEnd === 0) {
+          const prevLi = li.previousElementSibling;
+          const thisText = readSrc();
+          if (prevLi && prevLi.__lineIdx != null) {
+            // Merge into the previous list row.
+            e.preventDefault();
+            if (activeBlock !== current) return;
+            activeBlock = null; activeEdits.delete(entry.id);
+            const prevLineIdx = prevLi.__lineIdx; // stable (before lineIdx, unshifted by the splice)
+            const lines = entry.content.split('\n');
+            const pm = (lines[prevLineIdx] || '').match(ITEM_RE);
+            const prevPrefix = pm ? pm[1] : '';
+            const prevText = pm ? pm[2] : (lines[prevLineIdx] || '');
+            const merged = prevText + thisText;
+            lines[prevLineIdx] = prevPrefix + merged;
+            lines.splice(lineIdx, 1);
+            applyEntryContent(entry, lines.join('\n'), session);
+            card.__toView();
+            reopenItem(prevLineIdx, merged.trim(), prevText.length); // the merged row
+            return;
+          }
+          // Topmost row of the list: merge into the previous UNIT instead of bailing —
+          // the same neighbor ArrowUp hops to (a paragraph/heading block, or a prior
+          // list's last row). Mirrors the block editor's mergeIntoPrev.
+          const target = neighborUnit(entry, lineIdx, -1);
+          if (!target) return; // nothing before → browser default
+          e.preventDefault();
+          if (activeBlock !== current) return;
+          activeBlock = null; activeEdits.delete(entry.id);
+          const lines = entry.content.split('\n');
+          if (target.kind === 'item') {
+            const pm = (lines[target.lineIdx] || '').match(ITEM_RE);
+            const prevPrefix = pm ? pm[1] : '';
+            const prevText = pm ? pm[2] : (lines[target.lineIdx] || '');
+            const merged = prevText + thisText;
+            lines[target.lineIdx] = prevPrefix + merged;
+            lines.splice(lineIdx, 1);
+            applyEntryContent(entry, lines.join('\n'), session);
+            card.__toView();
+            reopenItem(target.lineIdx, merged.trim(), prevText.length);
+          } else {
+            // Previous unit is a block (paragraph/heading): append this row's text to
+            // its end, drop the blank separator, keep any remaining rows as their own
+            // block. Caret lands at the join, like mergeIntoPrev.
+            const blocks = splitBlocks(entry.content);
+            const prev = blocks[blocks.findIndex(x => x.start <= lineIdx && lineIdx <= x.end) - 1];
+            const prevText = lines.slice(prev.start, prev.end + 1).join('\n');
+            const head = [...lines.slice(0, prev.start), ...(prevText + thisText).split('\n')];
+            const tail = lines.slice(lineIdx + 1); // remaining rows + anything after
+            const newContent = (tail.length && tail[0].trim() !== '' ? [...head, '', ...tail] : [...head, ...tail]).join('\n');
+            applyEntryContent(entry, newContent, session);
+            card.__toView();
+            const blk = [...contentEl.querySelectorAll('.md-block')].find(x => x.__block && x.__block.start === prev.start);
+            if (blk) beginBlockEdit(blk, prevText.length);
+          }
+          return;
+        }
+      });
+    }
+
+    // Commit one list line: replace it, or remove it (newLine === null → row gone).
+    function commitItemLine(entry, lineIdx, newLine, session) {
+      const lines = entry.content.split('\n');
+      if (newLine === null) lines.splice(lineIdx, 1);
+      else lines[lineIdx] = newLine;
+      applyEntryContent(entry, lines.join('\n'), session);
+    }
+
+    // Re-find and open a switch target after a commit re-rendered the note. Blocks
+    // are re-found by their source text (indices shift when the prior commit edits
+    // lines above them); zones by position; items by their text.
+    function openBlockTarget(t) {
+      if (!t.contentEl.isConnected) return;
+      if (t.kind === 'zone') {
+        beginNewBlockEdit(t.entry, t.contentEl, t.where);
+      } else if (t.kind === 'item') {
+        // Prefer the (unique) line index; fall back to text if it shifted.
+        const li = findItemLiByIdx(t.contentEl, t.lineIdx) || findItemLi(t.contentEl, t.itemText);
+        if (li) beginItemEdit(li, li.closest('.md-block'), t.caret);
+      } else {
+        const blk = findBlockUnit(t.contentEl, t.start, t.text);
+        if (blk) beginBlockEdit(blk, t.caret);
+      }
+    }
+
+    // The editable block/zone/item (if any) that a point resolves to, for hopping.
+    function computeSwitchTarget(t, x, y) {
+      const zone = t.closest('.new-zone');
+      if (zone) return { kind: 'zone', contentEl: zone.closest('.entry-content'), entry: zone.__entry, where: zone.classList.contains('bottom') ? 'bottom' : 'top' };
+      const blk = t.closest('.md-block');
+      if (!blk || t.closest('a, input, button')) return null;
+      if (blk.classList.contains('list-block')) {
+        const li = t.closest('li');
+        if (li && li.__lineIdx != null) {
+          const line = blk.__entry.content.split('\n')[li.__lineIdx] || '';
+          const m = line.match(ITEM_RE);
+          // lineIdx is the stable identity (text collides on empty/duplicate rows);
+          // itemText is only a fallback if the index shifts under the commit.
+          return { kind: 'item', contentEl: blk.closest('.entry-content'), lineIdx: li.__lineIdx, itemText: (m ? m[2] : line).trim(), caret: sourceOffsetFromPoint(x, y, m ? m[2] : line) };
+        }
+        const src = blockText(blk.__entry.content, blk.__block); // gutter → whole list
+        return { kind: 'block', contentEl: blk.closest('.entry-content'), start: blk.__block.start, text: src, caret: null };
+      }
+      const src = blockText(blk.__entry.content, blk.__block);
+      return { kind: 'block', contentEl: blk.closest('.entry-content'), start: blk.__block.start, text: src, caret: sourceOffsetFromPoint(x, y, src) };
+    }
+
+    // Leaving the open editor is decided on pointerUP, not down: a press that turns
+    // into a scroll/drag (moved) or produces a text selection is NOT "done editing"
+    // — you might be scrolling, or selecting text elsewhere to copy. Only a clean
+    // tap outside commits (and hops, if it landed on another editable block/zone).
+    let pendingOutside = null;
+    document.addEventListener('pointerdown', (e) => {
+      pendingOutside = null;
+      if (!activeBlock) return;
+      if (activeBlock.wrap.contains(e.target)) return;         // inside the editor
+      const bar = activeBlock.card.querySelector('.entry-actions');
+      if (bar && bar.contains(e.target)) return;               // the toolbar / its popovers
+      pendingOutside = { x: e.clientX, y: e.clientY, target: e.target, moved: false };
+    }, true);
+    document.addEventListener('pointermove', (e) => {
+      if (pendingOutside && (Math.abs(e.clientX - pendingOutside.x) > 8 || Math.abs(e.clientY - pendingOutside.y) > 8)) pendingOutside.moved = true;
+    }, true);
+    document.addEventListener('pointercancel', () => { pendingOutside = null; }, true);
+    document.addEventListener('pointerup', () => {
+      const info = pendingOutside; pendingOutside = null;
+      if (!info || !activeBlock) return;
+      if (info.moved) return;                             // scroll / drag → stay editing
+      if (!window.getSelection().isCollapsed) return;     // text selected outside → keep it, stay editing
+      const closing = activeBlock;
+      const closingEntry = closing.entry;
+      const target = computeSwitchTarget(info.target, info.x, info.y);
+      // If committing the current row empties (deletes) it, the lines below shift
+      // up one — keep an item target's line index pointing at the right row.
+      if (target && target.kind === 'item' && closing.isItem && closing.lineIdx < target.lineIdx
+          && expandFromEdit(closing.ta.value, closing.order).trim() === '') {
+        target.lineIdx -= 1;
+      }
+      closing.commit(true, { keepSession: true });        // keep; end below if we've left
+      if (target) openBlockTarget(target);
+      // End the closed note's history-coalescing session unless we're still in it
+      // (a block-to-block hop within the same note keeps one session = one version).
+      if (!activeBlock || activeBlock.entry !== closingEntry) blockSessions.delete(closingEntry.id);
+    }, true);
 
     function attachCodeCopyButtons(contentEl) {
       contentEl.querySelectorAll('pre').forEach(pre => {
@@ -633,21 +1891,10 @@
     function attachCheckboxHandlers(contentEl, entry) {
       applyTodoMarkup(contentEl);
       attachCodeCopyButtons(contentEl);
-      // A lone, empty - ( ) is an empty list's placeholder: hidden, so the
-      // list renders as just its "+ Add item" trigger. It stays in the DOM to
-      // keep checkbox <-> markdown indices aligned.
-      contentEl.querySelectorAll('ul').forEach(ul => {
-        const todos = ul.querySelectorAll(':scope > li.todo-item');
-        if (todos.length === 1 && !todos[0].querySelector(':scope > .todo-text')?.textContent.trim()) {
-          todos[0].classList.add('todo-placeholder');
-        }
-      });
       // Stamp each checkbox with its markdown index (DOM order matches markdown order)
       contentEl.querySelectorAll('input[type="checkbox"]').forEach((cb, i) => {
         cb.dataset.mdIdx = i;
       });
-      attachTodoAddTriggers(contentEl, entry);
-      attachTodoDragHandles(contentEl, entry);
 
       contentEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
         const mdIdx = parseInt(cb.dataset.mdIdx);
@@ -678,387 +1925,8 @@
           }
         });
       });
-
-      // Wire up delete buttons with confirm cooldown
-      contentEl.querySelectorAll('.todo-x').forEach(x => {
-        let pending = false, timer = null;
-        const reset = () => {
-          pending = false;
-          clearTimeout(timer); timer = null;
-          x.classList.remove('confirm');
-          document.removeEventListener('pointerdown', onOutside, true);
-        };
-        const onOutside = (e) => { if (!x.contains(e.target)) reset(); };
-        x.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          if (pending) {
-            reset();
-            const li = x.closest('li.todo-item');
-            const cb = li?.querySelector('input[type="checkbox"]');
-            if (!cb) return;
-            const mdIdx = parseInt(cb.dataset.mdIdx);
-            // Deleting a list's last item leaves an empty - ( ) placeholder
-            // line, so the list (and its add trigger) survives
-            const lastOfList = li.parentElement.querySelectorAll(':scope > li.todo-item').length === 1;
-            let count = 0;
-            const oldContent = entry.content;
-            const newContent = entry.content.replace(CB_RE, (match, prefix) => {
-              if (count++ === mdIdx) return prefix + '\x00DELETE\x00';
-              return match;
-            });
-            const cleaned = newContent.split('\n').map(l => {
-              const i = l.indexOf('\x00DELETE\x00');
-              if (i === -1) return l;
-              return lastOfList ? l.slice(0, i) + '( )' : null;
-            }).filter(l => l !== null).join('\n');
-            entry.content = cleaned;
-            rerenderContent(contentEl, entry);
-            pendingCheckboxUpdates.add(entry.id);
-            try {
-              await updateDoc(doc(db, 'entries', entry.id), {
-                content: cleaned,
-                editHistory: arrayUnion({ content: oldContent, editedAt: new Date().toISOString() })
-              });
-            } catch (err) {
-              console.error('Todo delete failed', err);
-            } finally {
-              pendingCheckboxUpdates.delete(entry.id);
-              mergeAndRender();
-            }
-            return;
-          }
-          reset();
-          pending = true;
-          x.classList.add('confirm');
-          document.addEventListener('pointerdown', onOutside, true);
-          timer = setTimeout(reset, 3000);
-        });
-      });
     }
 
-    // Drag-to-reorder: grip handle on each todo item. Items can be dragged
-    // within their consecutive run of sibling todo items. Reordering rewrites
-    // the markdown lines but, like checkbox toggles, adds no editHistory record.
-    function attachTodoDragHandles(contentEl, entry) {
-      contentEl.querySelectorAll('li.todo-item').forEach(li => {
-        const grip = document.createElement('button');
-        grip.type = 'button';
-        grip.className = 'todo-grip';
-        grip.innerHTML = ICON.grip;
-        grip.title = 'Drag to reorder';
-        grip.addEventListener('contextmenu', e => e.preventDefault());
-        li.insertBefore(grip, li.querySelector(':scope > input[type="checkbox"]'));
-        grip.addEventListener('pointerdown', e => startTodoDrag(e, grip, li, contentEl, entry));
-      });
-    }
-
-    // During the drag everything moves via CSS transforms only — no DOM
-    // reparenting (which would release pointer capture). The real reorder
-    // happens once, on drop.
-    // onDrop (optional) replaces the default markdown commit: it receives the
-    // new order (or null if unchanged) plus the DOM anchor after the run. Used
-    // by the add-item draft row, which has no markdown line to reorder yet.
-    function startTodoDrag(e, grip, li, contentEl, entry, onDrop) {
-      if (e.pointerType === 'mouse' && e.button !== 0) return;
-      const ul = li.parentElement;
-      // Consecutive run of sibling todo items containing li (li itself counts
-      // as a member even when it isn't a todo item, e.g. the add-item draft)
-      let run = [], cur = [];
-      for (const child of ul.children) {
-        if (child.classList.contains('todo-item') || child === li) cur.push(child);
-        else { if (cur.includes(li)) break; cur = []; }
-      }
-      if (cur.includes(li)) run = cur;
-      if (run.length < 2) return;
-      e.preventDefault();
-      grip.setPointerCapture(e.pointerId);
-
-      const origIdx = run.indexOf(li);
-      const others = run.filter(item => item !== li);
-      // First node after the run; stable during the drag (transforms only)
-      const anchor = run[run.length - 1].nextSibling;
-      // Document-relative geometry, cached before any transforms apply
-      const mids = others.map(o => {
-        const r = o.getBoundingClientRect();
-        return r.top + r.height / 2 + window.scrollY;
-      });
-      const liRect = li.getBoundingClientRect();
-      const rowShift = liRect.height + 1; // +1 for the border-top separator
-      const minDy = run[0].getBoundingClientRect().top - liRect.top;
-      const maxDy = run[run.length - 1].getBoundingClientRect().bottom - liRect.bottom;
-      const startPageY = e.clientY + window.scrollY;
-      let dragging = false;
-      let lastClientY = e.clientY;
-      let curIdx = origIdx;
-      let rafId = null;
-
-      const update = () => {
-        const pageY = lastClientY + window.scrollY;
-        const dy = Math.max(minDy, Math.min(maxDy, pageY - startPageY));
-        li.style.transform = `translateY(${dy}px)`;
-        const idx = mids.filter(m => m < pageY).length;
-        if (idx !== curIdx) {
-          curIdx = idx;
-          others.forEach((o, i) => {
-            if (i >= idx && i < origIdx) o.style.transform = `translateY(${rowShift}px)`;
-            else if (i >= origIdx && i < idx) o.style.transform = `translateY(${-rowShift}px)`;
-            else o.style.transform = '';
-          });
-        }
-      };
-      // rAF loop so edge auto-scroll keeps going while the pointer is stationary
-      const tick = () => {
-        const margin = 60, speed = 8;
-        if (lastClientY < margin) window.scrollBy(0, -speed);
-        else if (lastClientY > window.innerHeight - margin) window.scrollBy(0, speed);
-        update();
-        rafId = requestAnimationFrame(tick);
-      };
-      const onMove = (ev) => {
-        lastClientY = ev.clientY;
-        if (!dragging) {
-          if (Math.abs(ev.clientY - e.clientY) < 4) return;
-          dragging = true;
-          li.classList.add('dragging');
-          rafId = requestAnimationFrame(tick);
-        }
-        update();
-      };
-      const finish = (commit) => {
-        grip.removeEventListener('pointermove', onMove);
-        grip.removeEventListener('pointerup', onUp);
-        grip.removeEventListener('pointercancel', onCancel);
-        if (rafId) cancelAnimationFrame(rafId);
-        li.classList.remove('dragging');
-        if (!dragging) return;
-        const newOrder = (commit && curIdx !== origIdx)
-          ? [...others.slice(0, curIdx), li, ...others.slice(curIdx)] : null;
-        if (onDrop) {
-          run.forEach(item => { item.style.transform = ''; });
-          onDrop(newOrder, anchor);
-        } else if (newOrder) {
-          commitTodoReorder(contentEl, entry, newOrder);
-        } else {
-          run.forEach(item => { item.style.transform = ''; });
-        }
-      };
-      const onUp = () => finish(true);
-      const onCancel = () => finish(false);
-      grip.addEventListener('pointermove', onMove);
-      grip.addEventListener('pointerup', onUp);
-      grip.addEventListener('pointercancel', onCancel);
-    }
-
-    // Rewrite the markdown so the run's line blocks (each todo line plus its
-    // more-indented continuation/nested lines) follow the new DOM order.
-    async function commitTodoReorder(contentEl, entry, newOrder) {
-      const lines = entry.content.split('\n');
-      // Line number of each checkbox, in markdown order (matches data-md-idx)
-      const cbLines = [];
-      for (let i = 0; i < lines.length; i++) {
-        CB_RE.lastIndex = 0;
-        if (CB_RE.test(lines[i])) cbLines.push(i);
-      }
-      CB_RE.lastIndex = 0;
-      const indentOf = l => l.match(/^\s*/)[0].length;
-      const blocks = newOrder.map(item => {
-        const cb = item.querySelector(':scope > input[type="checkbox"]');
-        const start = cbLines[parseInt(cb?.dataset.mdIdx)];
-        if (start === undefined) return null;
-        const indent = indentOf(lines[start]);
-        let end = start;
-        while (end + 1 < lines.length && lines[end + 1].trim() && indentOf(lines[end + 1]) > indent) end++;
-        return { start, end };
-      });
-      // The blocks must exactly tile a contiguous region, else bail out
-      let newContent = null;
-      if (blocks.every(Boolean)) {
-        const sorted = [...blocks].sort((a, b) => a.start - b.start);
-        const contiguous = sorted.every((b, i) => i === 0 || b.start === sorted[i - 1].end + 1);
-        if (contiguous) {
-          newContent = [
-            ...lines.slice(0, sorted[0].start),
-            ...blocks.flatMap(b => lines.slice(b.start, b.end + 1)),
-            ...lines.slice(sorted[sorted.length - 1].end + 1),
-          ].join('\n');
-        }
-      }
-      if (!newContent || newContent === entry.content) {
-        rerenderContent(contentEl, entry); // snap DOM back to markdown order
-        return;
-      }
-      entry.content = newContent;
-      rerenderContent(contentEl, entry);
-      pendingCheckboxUpdates.add(entry.id);
-      try {
-        await updateDoc(doc(db, 'entries', entry.id), { content: newContent });
-      } catch (err) {
-        console.error('Todo reorder failed', err);
-      } finally {
-        pendingCheckboxUpdates.delete(entry.id);
-        mergeAndRender();
-      }
-    }
-
-    // Add "+" triggers at the end of each <ul> that contains todo items
-    function attachTodoAddTriggers(contentEl, entry) {
-      contentEl.querySelectorAll('ul').forEach(ul => {
-        if (!ul.querySelector('li.todo-item')) return;
-        if (ul.querySelector('.todo-add-trigger, .todo-add-inline')) return;
-        const trigger = document.createElement('li');
-        trigger.className = 'todo-add-trigger';
-        trigger.innerHTML = '<span class="plus-icon">' + ICON.plus + '</span> <span>Add item</span>';
-        setupTodoAddTrigger(trigger, ul, contentEl, entry);
-        ul.appendChild(trigger);
-      });
-    }
-
-    function setupTodoAddTrigger(trigger, ul, contentEl, entry) {
-      trigger.addEventListener('click', () => {
-        const row = document.createElement('li');
-        row.className = 'todo-add-inline';
-        row.innerHTML = '<button type="button" class="todo-grip" title="Drag to reorder">' + ICON.grip + '</button>'
-          + '<input type="checkbox">'
-          + '<input type="text">'
-          + '<button type="button" class="todo-add-cancel" title="Cancel" aria-label="Cancel">'
-          + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>'
-          + '</button>';
-        trigger.replaceWith(row);
-        const circle = row.querySelector('input[type="checkbox"]');
-        const input = row.querySelector('input[type="text"]');
-        // Discard hint lives in the card's actions row, like in regular edit;
-        // appended only when shown so it doesn't add flex-gap space meanwhile
-        const escHint = document.createElement('span');
-        escHint.className = 'esc-hint';
-        const actionsEl = contentEl.closest('.entry-card')?.querySelector('.entry-actions');
-        input.focus();
-        // Toggling the circle must not steal focus from the input (pointerdown's
-        // default), or the blur handler would commit the item mid-typing
-        circle.addEventListener('pointerdown', (e) => e.preventDefault());
-        circle.addEventListener('click', () => input.focus());
-        // pointerdown (not click) so the input never blurs first; preventDefault
-        // keeps focus in place while we tear the row down ourselves
-        row.querySelector('.todo-add-cancel').addEventListener('pointerdown', (e) => {
-          e.preventDefault();
-          input.value = '';
-          commit();
-        });
-        // Draggable while editing: the drop only moves the row in the DOM —
-        // commit() reads the row's final neighbors to place the markdown line
-        const rowGrip = row.querySelector('.todo-grip');
-        rowGrip.addEventListener('contextmenu', (e) => e.preventDefault());
-        rowGrip.addEventListener('pointerdown', (e) => {
-          clearTimeout(blurTimer);
-          startTodoDrag(e, rowGrip, row, contentEl, entry, (newOrder, anchor) => {
-            if (newOrder) newOrder.forEach(el => ul.insertBefore(el, anchor));
-            input.focus();
-          });
-        });
-
-        let committed = false;
-        const commit = async () => {
-          if (committed) return;
-          escHint.remove();
-          const text = input.value.trim();
-          if (text) {
-            committed = true;
-            // Insert relative to the row's immediate neighbors, since the row
-            // may have been dragged into position while editing: after the
-            // previous todo item's block, or before the next one's line
-            const isTodo = el => el?.classList?.contains('todo-item');
-            const prevLi = isTodo(row.previousElementSibling) ? row.previousElementSibling : null;
-            const nextLi = !prevLi && isTodo(row.nextElementSibling) ? row.nextElementSibling : null;
-            const lines = entry.content.split('\n');
-            const cbLines = [];
-            for (let i = 0; i < lines.length; i++) {
-              CB_RE.lastIndex = 0;
-              if (CB_RE.test(lines[i])) cbLines.push(i);
-            }
-            CB_RE.lastIndex = 0;
-            const indentOf = l => l.match(/^\s*/)[0].length;
-            const lineOf = item => cbLines[parseInt(item.querySelector(':scope > input[type="checkbox"]')?.dataset.mdIdx)];
-
-            const placeholder = ul.querySelector(':scope > li.todo-item.todo-placeholder');
-            let insertAt = -1, indent = '', replaceCount = 0;
-            if (placeholder) {
-              // Empty list: the new item takes the placeholder line's spot
-              const start = lineOf(placeholder);
-              if (start !== undefined) {
-                indent = lines[start].match(/^(\s*)/)[1];
-                insertAt = start;
-                replaceCount = 1;
-              }
-            } else if (prevLi) {
-              const start = lineOf(prevLi);
-              if (start !== undefined) {
-                indent = lines[start].match(/^(\s*)/)[1];
-                // Skip past the previous item's nested/continuation block
-                let end = start;
-                while (end + 1 < lines.length && lines[end + 1].trim() && indentOf(lines[end + 1]) > indent.length) end++;
-                insertAt = end + 1;
-              }
-            } else if (nextLi) {
-              const start = lineOf(nextLi);
-              if (start !== undefined) {
-                indent = lines[start].match(/^(\s*)/)[1];
-                insertAt = start;
-              }
-            }
-
-            if (insertAt >= 0) {
-              const oldContent = entry.content;
-              lines.splice(insertAt, replaceCount, indent + '- (' + (circle.checked ? 'x' : ' ') + ') ' + text);
-              const newContent = lines.join('\n');
-              entry.content = newContent;
-              rerenderContent(contentEl, entry);
-
-              pendingCheckboxUpdates.add(entry.id);
-              try {
-                await updateDoc(doc(db, 'entries', entry.id), {
-                  content: newContent,
-                  editHistory: arrayUnion({ content: oldContent, editedAt: new Date().toISOString() })
-                });
-              } catch (err) {
-                console.error('Todo add failed', err);
-              } finally {
-                pendingCheckboxUpdates.delete(entry.id);
-                mergeAndRender();
-              }
-            }
-          } else {
-            const t2 = document.createElement('li');
-            t2.className = 'todo-add-trigger';
-            t2.innerHTML = '<span class="plus-icon">' + ICON.plus + '</span> <span>Add item</span>';
-            // Back to the end of the list — the row may have been dragged away
-            row.remove();
-            ul.appendChild(t2);
-            setupTodoAddTrigger(t2, ul, contentEl, entry);
-          }
-        };
-
-        let escPending = false;
-        input.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') { e.preventDefault(); commit(); }
-          if (e.key === 'Escape') {
-            if (!input.value.trim() || escPending) { input.value = ''; commit(); }
-            else {
-              escPending = true;
-              escHint.textContent = 'Esc again to discard';
-              if (actionsEl && !escHint.isConnected) {
-                // After the share button, i.e. before the date spacer that
-                // starts the right-aligned group — same spot as in edit mode
-                actionsEl.insertBefore(escHint, actionsEl.querySelector(':scope > .entry-date'));
-              }
-              setTimeout(() => { escPending = false; escHint.remove(); }, 3000);
-            }
-          }
-        });
-        // Cancelable so a quick circle-toggle round trip doesn't commit
-        let blurTimer;
-        input.addEventListener('blur', () => { blurTimer = setTimeout(commit, 150); });
-        input.addEventListener('focus', () => clearTimeout(blurTimer));
-      });
-    }
     function handleListContinuation(e, textarea) {
       if (e.key !== 'Enter' || e.ctrlKey || e.metaKey || e.shiftKey) return false;
       const { selectionStart, value } = textarea;
@@ -1107,8 +1975,7 @@
 
     const LIST_MODES = [
       { id: 'plain',    label: 'Plain text',      prefix: '' },
-      { id: 'todo',     label: '- ( ) Todo',     prefix: '- ( ) ' },
-      { id: 'checkbox', label: '- [ ] Checkbox',  prefix: '- [ ] ' },
+      { id: 'todo',     label: '- [ ] Todo',     prefix: '- [ ] ' },
       { id: 'bullet',   label: '- Bullet',        prefix: '- ' },
       { id: 'numbered', label: '1. Numbered',     prefix: null },
     ];
@@ -1117,8 +1984,8 @@
     function detectListMode(lines) {
       for (const line of lines) {
         if (!line.trim()) continue;
-        if (/^\s*[-*]\s+\([ xX]\)/.test(line)) return 'todo';
-        if (/^\s*[-*]\s+\[[ xX]\]/.test(line)) return 'checkbox';
+        // Both - [ ] (canonical) and legacy - ( ) read as 'todo'.
+        if (/^\s*[-*]\s+(?:\([ xX]\)|\[[ xX]\])/.test(line)) return 'todo';
         if (/^\s*\d+\.\s+/.test(line)) return 'numbered';
         if (/^\s*[-*]\s+/.test(line)) return 'bullet';
       }
@@ -1144,17 +2011,23 @@
         // Detect checked state before stripping
         const isChecked = /[-*]\s+\([xX]\)|[-*]\s+\[[xX]\]/.test(line);
         const stripped = line.replace(STRIP_LIST_RE, '$1').trim();
-        if (!stripped) return line;
+        // Skip blank lines only in a multi-line selection; on a single empty line
+        // still insert the marker so you can start a list item from scratch.
+        if (!stripped && lines.length > 1) return line;
         if (modeId === 'numbered') return indent + (i + 1) + '. ' + stripped;
         if (modeId === 'plain') return indent + stripped;
-        if (modeId === 'todo') return indent + (isChecked ? '- (x) ' : '- ( ) ') + stripped;
-        if (modeId === 'checkbox') return indent + (isChecked ? '- [x] ' : '- [ ] ') + stripped;
+        if (modeId === 'todo') return indent + (isChecked ? '- [x] ' : '- [ ] ') + stripped;
         return indent + mode.prefix + stripped;
       }).join('\n');
 
       textarea.value = before + replacement + after;
-      textarea.selectionStart = before.length;
-      textarea.selectionEnd = before.length + replacement.length;
+      if (lines.length === 1 && !selected.trim()) {
+        // Inserted a marker on an empty line → put the caret after it to type.
+        textarea.selectionStart = textarea.selectionEnd = before.length + replacement.length;
+      } else {
+        textarea.selectionStart = before.length;
+        textarea.selectionEnd = before.length + replacement.length;
+      }
       textarea.dispatchEvent(new Event('input'));
       textarea.focus();
     }
@@ -1170,7 +2043,9 @@
       wrapper.className = 'cycle-wrapper';
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.style.cssText = 'padding:6px 10px;font-size:0.85rem;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;min-height:36px;display:flex;align-items:center;justify-content:center;';
+      // Keep focus in the editor so applying a format doesn't blur→refocus (which
+      // makes the browser scroll the textarea into view — a jarring second scroll).
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
       const popover = document.createElement('div');
       popover.className = 'cycle-popover';
       wrapper.append(btn, popover);
@@ -1189,6 +2064,7 @@
         modes.forEach(m => {
           const b = document.createElement('button');
           b.type = 'button';
+          b.addEventListener('mousedown', (e) => e.preventDefault()); // keep editor focus
           b.innerHTML = iconFor(m.id);
           b.title = labelFor(m);
           if (m.id === current) b.classList.add('active');
@@ -1302,15 +2178,22 @@
       const selected = value.slice(fullStart, fullEnd);
       const after = value.slice(fullEnd);
       const hashes = HEADER_MODES.find(m => m.id === modeId).hashes;
-      const replacement = selected.split('\n').map(line => {
+      const srcLines = selected.split('\n');
+      const replacement = srcLines.map(line => {
         const indent = line.match(/^(\s*)/)[1];
         const body = line.replace(STRIP_HEADER_RE, '$1').slice(indent.length);
-        if (!body.trim()) return line;
+        // Skip blank lines only in a multi-line selection; on a single empty line
+        // still insert the hashes so you can start a heading from scratch.
+        if (!body.trim() && srcLines.length > 1) return line;
         return indent + hashes + body;
       }).join('\n');
       textarea.value = before + replacement + after;
-      textarea.selectionStart = before.length;
-      textarea.selectionEnd = before.length + replacement.length;
+      if (srcLines.length === 1 && !selected.trim()) {
+        textarea.selectionStart = textarea.selectionEnd = before.length + replacement.length;
+      } else {
+        textarea.selectionStart = before.length;
+        textarea.selectionEnd = before.length + replacement.length;
+      }
       textarea.dispatchEvent(new Event('input'));
       textarea.focus();
     }
@@ -1393,8 +2276,25 @@
 
     function applyFormat(textarea, targetId) {
       const { selectionStart, selectionEnd, value } = textarea;
-      const [s, e] = formatRange(value, selectionStart, selectionEnd);
-      const span = detectFormatSpan(value, s, e);
+      let [s, e] = formatRange(value, selectionStart, selectionEnd);
+      // Never let inline formatting (**/*/~~) swallow a leading block marker
+      // (heading #, blockquote >, list bullet/number/todo) — clamp the start past
+      // it so a whole-line selection wraps only the content, not the marker.
+      const lnStart = s === 0 ? 0 : value.lastIndexOf('\n', s - 1) + 1;
+      const mk = value.slice(lnStart, e).match(/^\s*(?:#{1,6}\s+|>+\s*|(?:[-*+]|\d+\.)\s+(?:\([ xX]\)\s*|\[[ xX]\]\s*)?)/);
+      if (mk) s = Math.max(s, lnStart + mk[0].length);
+      // The selection may INCLUDE the markers (e.g. selecting **text** whole, not
+      // just the word) — detect that so we toggle the format OFF instead of
+      // wrapping it again (which otherwise doubles the markers each click).
+      let span = null;
+      const sel = value.slice(s, e);
+      for (const [id, m] of [['bold', '**'], ['strike', '~~'], ['italic', '*'], ['italic', '_']]) {
+        if (sel.length >= 2 * m.length && sel.startsWith(m) && sel.endsWith(m)) {
+          span = { id, mark: m, open: s, close: e - m.length };
+          break;
+        }
+      }
+      if (!span) span = detectFormatSpan(value, s, e); // markers outside the selection
       const cur = span?.id || 'plain';
       const target = targetId === cur ? 'plain' : targetId;   // re-picking the active mode removes it
       let before, inner, after;
@@ -1493,8 +2393,8 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.title = 'Add / remove link';
-      btn.style.cssText = 'padding:6px 10px;font-size:0.85rem;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;min-height:36px;display:flex;align-items:center;justify-content:center;';
       btn.innerHTML = ICON.link;
+      btn.addEventListener('mousedown', (e) => e.preventDefault()); // keep editor focus
       btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); applyLink(textarea); });
       return btn;
     }
@@ -1514,8 +2414,8 @@
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.title = 'Add picture';
-      btn.style.cssText = 'padding:6px 10px;font-size:0.85rem;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;min-height:36px;display:flex;align-items:center;justify-content:center;';
       btn.innerHTML = ICON.image;
+      btn.addEventListener('mousedown', (e) => e.preventDefault()); // keep editor focus
 
       const makeInput = (capture) => {
         const input = document.createElement('input');
@@ -1573,13 +2473,244 @@
       return wrapper;
     }
 
+    // ── Emoji picker button ──
+    // Rightmost tool in the edit toolbar's left group. Click/tap inserts the top
+    // suggestion (the button's face); hover (desktop) or long-press (touch) opens a
+    // searchable picker — same interaction model as makeCyclePopoverButton. Suggested
+    // emoji come from a cheap seeded list (scanEmojiUsage), not a frequency scan.
+    let EMOJI_RE;
+    try { EMOJI_RE = new RegExp('\\p{RGI_Emoji}', 'gv'); }
+    catch (e) { EMOJI_RE = /(\p{Extended_Pictographic}(\u{1F3FB}-\u{1F3FF})?(‍\p{Extended_Pictographic})*|\p{Regional_Indicator}{2})/gu; }
+    function extractEmojis(text) {
+      return (String(text).match(EMOJI_RE) || []).filter(e => /\p{Extended_Pictographic}/u.test(e));
+    }
+    const EMOJI_CATALOG = {
+      'Smileys': [
+        ['😂','joy tears laugh lol funny'],['🤣','rofl rolling laughing'],['😭','sob crying cry sad'],
+        ['😅','sweat nervous laugh phew'],['😉','wink'],['😊','blush happy smile'],
+        ['🙂','slight smile'],['😍','heart eyes love'],['🥰','love hearts adore'],
+        ['😘','kiss blow'],['😎','cool sunglasses'],['😌','relieved calm content'],
+        ['🤔','thinking hmm'],['🙄','eye roll'],['😴','sleep tired zzz'],
+        ['🥳','party celebrate'],['😳','flushed embarrassed shock'],['🥺','pleading puppy please'],
+        ['😔','pensive sad down'],['😢','cry sad tear'],['😩','weary tired ugh'],
+        ['🤪','zany silly crazy'],['😜','wink tongue playful'],['😇','angel innocent halo'],
+        ['🤗','hug hands'],['😋','yum tasty savour'],
+      ],
+      'Hearts & Symbols': [
+        ['❤️','heart love red'],['💔','broken heart'],['💯','hundred perfect keep it'],
+        ['✨','sparkles shiny'],['🔥','fire lit hot'],['💥','boom collision'],
+        ['🎉','party tada celebrate'],['✅','check done tick yes'],['❌','cross wrong no'],
+        ['❗','exclamation important'],['💡','idea bulb light'],['⭐','star favourite'],['💤','sleep zzz'],
+      ],
+      'Gestures': [
+        ['👍','thumbs up yes like ok'],['👎','thumbs down no dislike'],['🙏','pray thanks please'],
+        ['🙌','raise hands praise yay'],['👏','clap applause'],['👌','ok perfect'],
+        ['✌️','peace victory'],['🤞','fingers crossed luck hope'],['💪','muscle strong flex'],
+        ['👀','eyes look'],['👋','wave hello bye'],['🤝','handshake deal agree'],
+      ],
+      'Spicy': [
+        ['😏','smirk sly naughty'],['😈','devil naughty grin'],['🥵','hot face blush sweat'],
+        ['😳','flushed blush cheeks'],['👅','tongue lick'],['💋','kiss lips'],
+        ['🍆','eggplant aubergine'],['🍑','peach butt'],['💦','splash sweat drops'],
+      ],
+      'People & Celebration': [
+        ['👶','baby infant'],['🤰','pregnant expecting'],['🍼','baby bottle milk'],
+        ['🧸','teddy bear toy'],['🎈','balloon'],['🎂','birthday cake'],
+        ['🎁','gift present'],['👑','crown king queen'],
+      ],
+      'Food & Drink': [
+        ['☕','coffee tea hot'],['🍷','wine'],['🥂','cheers toast celebrate'],
+        ['🍕','pizza'],['🥗','salad healthy'],['🍎','apple fruit'],
+        ['🥑','avocado'],['🍅','tomato'],['🍓','strawberry'],
+        ['🍌','banana'],['🍞','bread'],['🥖','baguette bread'],
+        ['🧀','cheese'],['🥚','egg'],['🍰','cake dessert'],['🍫','chocolate'],
+      ],
+      'Activity & Travel': [
+        ['🏃','run running'],['🧘','yoga meditate calm'],['🚴','bike cycling'],
+        ['⚽','soccer football'],['🏆','trophy win'],['🎯','target dart goal'],
+        ['🎵','music note song'],['📚','books read study'],['✈️','plane flight travel'],
+        ['🚗','car drive'],['🏖️','beach vacation'],['🏕️','camping tent'],
+        ['⛰️','mountain hike'],['🏠','home house'],
+      ],
+      'Nature': [
+        ['🌱','seedling plant grow'],['🌿','herb leaf'],['🌷','tulip flower'],
+        ['🌸','blossom flower'],['🌻','sunflower'],['🌹','rose'],
+        ['🌳','tree'],['☀️','sun sunny'],['🌙','moon night'],
+        ['🌈','rainbow'],['💧','water drop droplet'],['🌊','wave ocean sea'],
+        ['🐶','dog puppy'],['🐱','cat'],
+      ],
+      'Objects & Work': [
+        ['📞','phone call'],['📱','mobile phone'],['💻','laptop computer'],
+        ['📅','calendar date'],['⏰','alarm clock time'],['⏳','hourglass wait'],
+        ['✏️','pencil edit'],['📌','pushpin'],['📎','paperclip'],
+        ['🔧','wrench tool fix plumber'],['🔨','hammer'],['💰','money bag cash'],
+        ['💳','card payment'],['🛒','cart shopping grocery'],['🔑','key'],
+        ['🔒','lock secure'],['🔍','search find magnify'],['📊','chart graph'],
+      ],
+      'Flags': [
+        ['🇵🇹','portugal flag pt'],['🇭🇺','hungary flag hu'],['🇬🇧','uk united kingdom britain flag'],
+        ['🇩🇪','germany flag de'],['🇫🇷','france flag fr'],['🇮🇹','italy flag it'],
+        ['🇪🇸','spain flag es'],['🇵🇱','poland flag pl'],['🇷🇴','romania flag ro'],
+        ['🇳🇱','netherlands flag nl'],['🇧🇪','belgium flag be'],['🇨🇿','czechia czech flag cz'],
+        ['🇸🇪','sweden flag se'],['🇨🇳','china flag cn'],['🇮🇳','india flag in'],
+        ['🇺🇸','usa united states america flag us'],['🇮🇩','indonesia flag id'],['🇵🇰','pakistan flag pk'],
+        ['🇳🇬','nigeria flag ng'],['🇧🇷','brazil flag br'],['🇧🇩','bangladesh flag bd'],
+        ['🇷🇺','russia flag ru'],['🇲🇽','mexico flag mx'],
+      ],
+    };
+    // Any country flag is discoverable by name in search though only the curated ones
+    // preview — a flag is two regional-indicator letters, generated from the ISO code.
+    function flagOf(code) { return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)); }
+    const EMOJI_COUNTRIES = ('ad andorra|ae uae emirates|af afghanistan|ag antigua|al albania|am armenia|'+
+      'ao angola|ar argentina|at austria|au australia|az azerbaijan|ba bosnia|bb barbados|bd bangladesh|'+
+      'be belgium|bf burkina faso|bg bulgaria|bh bahrain|bi burundi|bj benin|bn brunei|bo bolivia|'+
+      'br brazil|bs bahamas|bt bhutan|bw botswana|by belarus|bz belize|ca canada|cd congo drc|cf central african|'+
+      'cg congo|ch switzerland swiss|ci ivory coast|cl chile|cm cameroon|cn china|co colombia|cr costa rica|'+
+      'cu cuba|cv cape verde|cy cyprus|cz czechia czech|de germany|dj djibouti|dk denmark|dm dominica|'+
+      'do dominican|dz algeria|ec ecuador|ee estonia|eg egypt|er eritrea|es spain|et ethiopia|fi finland|'+
+      'fj fiji|fr france|ga gabon|gb uk united kingdom britain england|gd grenada|ge georgia|gh ghana|'+
+      'gm gambia|gn guinea|gq equatorial guinea|gr greece|gt guatemala|gw guinea bissau|gy guyana|'+
+      'hn honduras|hr croatia|ht haiti|hu hungary|id indonesia|ie ireland|il israel|in india|iq iraq|'+
+      'ir iran|is iceland|it italy|jm jamaica|jo jordan|jp japan|ke kenya|kg kyrgyzstan|kh cambodia|'+
+      'ki kiribati|km comoros|kn saint kitts|kp north korea|kr south korea|kw kuwait|kz kazakhstan|'+
+      'la laos|lb lebanon|lc saint lucia|li liechtenstein|lk sri lanka|lr liberia|ls lesotho|lt lithuania|'+
+      'lu luxembourg|lv latvia|ly libya|ma morocco|mc monaco|md moldova|me montenegro|mg madagascar|'+
+      'mk macedonia|ml mali|mm myanmar burma|mn mongolia|mr mauritania|mt malta|mu mauritius|mv maldives|'+
+      'mw malawi|mx mexico|my malaysia|mz mozambique|na namibia|ne niger|ng nigeria|ni nicaragua|'+
+      'nl netherlands holland|no norway|np nepal|nz new zealand|om oman|pa panama|pe peru|pg papua new guinea|'+
+      'ph philippines|pk pakistan|pl poland|pt portugal|py paraguay|qa qatar|ro romania|rs serbia|ru russia|'+
+      'rw rwanda|sa saudi arabia|sb solomon|sc seychelles|sd sudan|se sweden|sg singapore|si slovenia|'+
+      'sk slovakia|sl sierra leone|sm san marino|sn senegal|so somalia|sr suriname|ss south sudan|'+
+      'st sao tome|sv el salvador|sy syria|sz eswatini swaziland|td chad|tg togo|th thailand|tj tajikistan|'+
+      'tl timor|tm turkmenistan|tn tunisia|to tonga|tr turkey turkiye|tt trinidad|tv tuvalu|tw taiwan|'+
+      'tz tanzania|ua ukraine|ug uganda|us usa united states america|uy uruguay|uz uzbekistan|'+
+      'va vatican|vc saint vincent|ve venezuela|vn vietnam|vu vanuatu|ws samoa|ye yemen|za south africa|'+
+      'zm zambia|zw zimbabwe').split('|').map(s => { const i = s.indexOf(' '); return [flagOf(s.slice(0, i)), s]; });
+
+    // Flags is the last section, so it can be exhaustive: curated priority flags first,
+    // then every other country (from EMOJI_COUNTRIES), deduped — restores the flag
+    // discoverability that search used to provide.
+    {
+      const seen = new Set(EMOJI_CATALOG['Flags'].map(x => x[0]));
+      for (const c of EMOJI_COUNTRIES) if (!seen.has(c[0])) { EMOJI_CATALOG['Flags'].push(c); seen.add(c[0]); }
+    }
+    // Flat set of everything now in the catalog, to tell "custom" (previously-used) emoji apart.
+    const EMOJI_CATALOG_SET = new Set(Object.values(EMOJI_CATALOG).flat().map(x => x[0]));
+
+    // Distinct emoji seen across all notes, in preference (card) order; refreshed per
+    // snapshot. Feeds both the seeded suggestions and the "Used before" section. No
+    // persistence — the notes are the store; this just caches the current view.
+    let usedEmojis = [], emojiSuggest = [];
+    function scanEmojiUsage(entries) {
+      const seen = new Set(), list = [];
+      for (const en of entries) for (const e of extractEmojis(en.content || '')) if (!seen.has(e)) { seen.add(e); list.push(e); }
+      usedEmojis = list;
+      if (emojiSuggest.length < 8) for (const e of list) { if (!emojiSuggest.includes(e)) { emojiSuggest.push(e); if (emojiSuggest.length >= 8) break; } }
+    }
+    function pushEmojiSuggest(e) {
+      const i = emojiSuggest.indexOf(e); if (i !== -1) emojiSuggest.splice(i, 1);
+      emojiSuggest.unshift(e); if (emojiSuggest.length > 8) emojiSuggest.length = 8;
+    }
+    function insertEmojiAtCaret(ta, emoji) {
+      const s = ta.selectionStart ?? ta.value.length, e = ta.selectionEnd ?? ta.value.length;
+      ta.value = ta.value.slice(0, s) + emoji + ta.value.slice(e);
+      ta.selectionStart = ta.selectionEnd = s + emoji.length;
+      ta.dispatchEvent(new Event('input'));
+      ta.focus();
+    }
+
+    function makeEmojiButton(textarea) {
+      const wrapper = document.createElement('span');
+      wrapper.className = 'emoji-wrapper';
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'emoji-btn'; btn.title = 'Emoji — tap to insert, hold for picker';
+      btn.addEventListener('mousedown', (e) => e.preventDefault()); // keep editor focus
+
+      const topEmoji = () => extractEmojis(textarea.value)[0] || emojiSuggest[0] || '🙂';
+      const refreshFace = () => { btn.textContent = topEmoji(); };
+      refreshFace();
+
+      let pop = null, longFired = false, hoverTimer = null, pressTimer = null, lastTouchTime = 0;
+      const gridHTML = (list) => '<div class="emoji-grid">' + list.map(e => '<button type="button" data-e="' + e + '">' + e + '</button>').join('') + '</div>';
+
+      function rebuild() {
+        const scroll = pop.querySelector('.emoji-scroll');
+        let html = '';
+        const inNote = [...new Set(extractEmojis(textarea.value))];
+        const sugg = [...inNote];
+        for (const e of emojiSuggest) { if (sugg.length >= 8) break; if (!sugg.includes(e)) sugg.push(e); }
+        if (sugg.length) html += '<div class="emoji-cat">Suggested</div>' + gridHTML(sugg.slice(0, 8));
+        // Custom emoji you've used before that aren't in our set — kept reachable now that search is gone.
+        const before = usedEmojis.filter(e => !EMOJI_CATALOG_SET.has(e) && !sugg.includes(e));
+        if (before.length) html += '<div class="emoji-cat">Used before</div>' + gridHTML(before);
+        for (const [cat, list] of Object.entries(EMOJI_CATALOG)) html += '<div class="emoji-cat">' + cat + '</div>' + gridHTML(list.map(x => x[0]));
+        scroll.innerHTML = html;
+      }
+
+      const onOutside = (e) => { if (pop && !wrapper.contains(e.target)) closePanel(); };
+      function openPanel() {
+        clearTimeout(hoverTimer);
+        if (pop) return;
+        refreshFace(); // re-sync the face to current suggestions when the picker is engaged
+        pop = document.createElement('div');
+        pop.className = 'emoji-pop';
+        if (btn.getBoundingClientRect().top < 340) pop.classList.add('below');
+        pop.innerHTML = '<div class="emoji-scroll"></div>';
+        wrapper.appendChild(pop);
+        rebuild();
+        // Clamp within the viewport (the panel is wider than the button).
+        const wr = wrapper.getBoundingClientRect(), vw = document.documentElement.clientWidth, W = pop.offsetWidth;
+        let left = 0;
+        if (wr.left + W > vw - 8) left = (vw - 8) - (wr.left + W);
+        if (wr.left + left < 8) left = 8 - wr.left;
+        pop.style.left = left + 'px';
+        // Keep the caret (don't blur the editor) when tapping an emoji.
+        pop.addEventListener('mousedown', (e) => e.preventDefault());
+        pop.addEventListener('click', (e) => {
+          const cell = e.target.closest('button[data-e]'); if (!cell) return;
+          e.preventDefault(); e.stopPropagation();
+          insertEmojiAtCaret(textarea, cell.dataset.e);
+          pushEmojiSuggest(cell.dataset.e);
+          refreshFace(); rebuild();
+        });
+        document.addEventListener('pointerdown', onOutside, true);
+      }
+      function closePanel() {
+        if (!pop) return;
+        document.removeEventListener('pointerdown', onOutside, true);
+        pop.remove(); pop = null;
+      }
+      const closeIfAway = () => { if (pop && !pop.matches(':hover') && !btn.matches(':hover')) closePanel(); };
+
+      btn.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        clearTimeout(hoverTimer);
+        if (longFired) { longFired = false; return; }  // long-press already opened the picker
+        const em = btn.textContent || topEmoji();  // insert exactly what the face shows (WYSIWYG)
+        insertEmojiAtCaret(textarea, em);
+        pushEmojiSuggest(em);
+        refreshFace();
+      });
+      // Hover opens on desktop (skipped right after a touch), like the cycle/view popovers.
+      btn.addEventListener('mouseenter', () => { if (Date.now() - lastTouchTime < 1000) return; hoverTimer = setTimeout(openPanel, 650); });
+      btn.addEventListener('mouseleave', () => { clearTimeout(hoverTimer); setTimeout(closeIfAway, 200); });
+      wrapper.addEventListener('mouseleave', () => setTimeout(closeIfAway, 200));
+      // Touch: long-press opens; a short tap falls through to click (= insert).
+      btn.addEventListener('touchstart', () => { lastTouchTime = Date.now(); longFired = false; pressTimer = setTimeout(() => { longFired = true; openPanel(); }, 500); }, { passive: true });
+      btn.addEventListener('touchend', () => clearTimeout(pressTimer));
+      btn.addEventListener('touchmove', () => clearTimeout(pressTimer));
+
+      wrapper.append(btn);
+      return wrapper;
+    }
+
     // ── Firebase SDK imports ──
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js';
     import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, GoogleAuthProvider, onAuthStateChanged }
       from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js';
     import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
              collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot,
-             query, orderBy, where, or, serverTimestamp, arrayUnion, getDoc }
+             query, orderBy, where, or, serverTimestamp, arrayUnion, arrayRemove, getDoc }
       from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js';
 
     // ── Firebase config ──
@@ -1640,14 +2771,17 @@
       link: `<svg ${svgAttrs}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
       grip: `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="9" cy="5" r="1.8"/><circle cx="15" cy="5" r="1.8"/><circle cx="9" cy="12" r="1.8"/><circle cx="15" cy="12" r="1.8"/><circle cx="9" cy="19" r="1.8"/><circle cx="15" cy="19" r="1.8"/></svg>`,
       plus: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
-      // Save uses a plain checkmark (confirm). Drawn a touch larger (18 vs 16) so
-      // the primary action reads well; stroke-width trimmed to 1.8 so the *rendered*
-      // line width still matches the 16px icons (2 * 16/24 ≈ 1.8 * 18/24).
-      save: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+      // Save uses a plain checkmark (confirm). Same 16px box as the other icons so
+      // the button doesn't render wider than its neighbours; the blue fill (not size)
+      // marks it as the primary/edit action.
+      save: `<svg ${svgAttrs}><polyline points="20 6 9 17 4 12"/></svg>`,
       close: `<svg ${svgAttrs}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+      tools: `<svg ${svgAttrs}><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>`,
     };
 
     // ── Confirm-to-act button helper ──
+    // First tap arms (turns the button rose for 3s); a second tap within that window
+    // fires the action. Tapping elsewhere or the timeout resets it.
     function confirmButton(btn, icon, confirmAction) {
       let pending = false;
       let timer = null;
@@ -1662,6 +2796,10 @@
         btn.style.borderColor = '';
       };
       const onOutside = (e) => { if (!btn.contains(e.target)) reset(); };
+      // Don't let the tap steal focus from the open editor — blurring it closes the
+      // on-screen keyboard, which shifts the sticky toolbar and makes the button you
+      // must tap twice jump out from under your finger between taps.
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         if (pending) {
@@ -1998,9 +3136,31 @@
       { id: 'unshared', icon: ICON.viewUnshared,  label: 'Unshared' },
     ];
 
+    // Unlinked notes involving me: ones I've set aside, plus my own shared notes a
+    // recipient rejected. Recomputed from live data. (Inlined, not via isSetAside/
+    // isRejectedMine, so it never depends on their later definition order.)
+    function countSetAside() {
+      return allEntries.reduce((n, e) => {
+        if (!Array.isArray(e.hiddenFor) || !e.hiddenFor.length) return n;
+        const mineRejected = e.owner === currentUserEmail && e.shared;
+        const iSetAside = e.owner !== currentUserEmail && e.hiddenFor.includes(currentUserEmail);
+        return n + (mineRejected || iSetAside ? 1 : 0);
+      }, 0);
+    }
+    // onGreen: badge sits on the active (sage) filter button — flip to a white
+    // circle with the rose number so it reads cleanly on green.
+    const setAsideBadge = (onGreen) => {
+      const n = countSetAside();
+      if (!n) return '';
+      const style = onGreen ? ' style="background:#fff;color:#d4728c"' : '';
+      return '<span class="view-badge"' + style + '>' + n + '</span>';
+    };
+
     function updateViewBtn() {
       const m = VIEW_MODES.find(v => v.id === viewMode);
-      toggleViewBtn.innerHTML = m.icon + '<span style="margin-left:4px">' + m.label + '</span>';
+      // Show the set-aside count on the button only while the Shared filter is active.
+      const badge = viewMode === 'shared' ? setAsideBadge(true) : '';
+      toggleViewBtn.innerHTML = m.icon + '<span style="margin-left:4px">' + m.label + '</span>' + badge;
       toggleViewBtn.style.cssText = m.activeStyle || '';
     }
 
@@ -2008,7 +3168,7 @@
       viewPopover.innerHTML = '';
       VIEW_MODES.forEach(m => {
         const b = document.createElement('button');
-        b.innerHTML = m.icon + ' ' + m.label;
+        b.innerHTML = m.icon + ' ' + m.label + (m.id === 'shared' ? setAsideBadge() : '');
         if (m.id === viewMode) b.classList.add('active');
         b.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -2190,6 +3350,7 @@
           const tb = b.sortTime?.toMillis?.() || (b._pending ? Number.MAX_SAFE_INTEGER : 0);
           return tb - ta;
         });
+        scanEmojiUsage(allEntries);
         renderEntries();
       });
     }
@@ -2209,10 +3370,29 @@
       if (closed) e.preventDefault();
     });
 
+    // A note shared *to* me that I've set aside (unlinked): it leaves my active
+    // list and shows rose in Shared; the owner's copy is untouched.
+    const isSetAside = (e) => e.owner !== currentUserEmail &&
+      Array.isArray(e.hiddenFor) && e.hiddenFor.includes(currentUserEmail);
+    // My own shared note that a recipient set aside. The mirror of set-aside: it stays
+    // VISIBLE (red) in my list to alert me, rather than leaving it. Requires `shared` so
+    // unsharing clears the alert and re-sharing restores it (hiddenFor is never cleared).
+    const isRejectedMine = (e) => e.owner === currentUserEmail && e.shared &&
+      Array.isArray(e.hiddenFor) && e.hiddenFor.length > 0;
+    const cardClassFor = (e) => 'entry-card' +
+      ((isSetAside(e) || isRejectedMine(e)) ? ' unlinked' : (e.shared ? ' shared' : ''));
+
     function buildCard(initialEntry) {
       let entry = initialEntry;
       const card = document.createElement('div');
-      card.className = 'entry-card' + (entry.shared ? ' shared' : '');
+      card.className = cardClassFor(entry);
+      // Card-anchored ridges: __ridge marks the open editor; __hoverRidge previews
+      // where a click would land (shown even while another row is being edited).
+      card.__ridge = document.createElement('div');
+      card.__ridge.className = 'edit-ridge';
+      card.__hoverRidge = document.createElement('div');
+      card.__hoverRidge.className = 'edit-ridge soft';
+      card.append(card.__ridge, card.__hoverRidge);
 
       const dateEl = document.createElement('div');
       dateEl.className = 'entry-date';
@@ -2224,6 +3404,14 @@
       let ts = lastEditedAt ? new Date(lastEditedAt) : (entry.createdAt?.toDate?.() || new Date());
       const dateText = document.createElement('span');
       dateText.textContent = relativeTime(ts);
+      // For a note shared to me, fold the owner's name into the date ("Ana · 5d")
+      // so the action slot is free for the unlink button (mirroring the owner's
+      // share button position).
+      if (entry.owner !== currentUserEmail) {
+        const who = document.createElement('span');
+        who.textContent = (USER_ALIASES[entry.owner] || (entry.owner || '').split('@')[0]) + ' · ';
+        dateEl.appendChild(who);
+      }
       dateEl.appendChild(dateText);
       let historyOpen = false;
       // Build versions with correct "created at" dates:
@@ -2243,8 +3431,7 @@
 
       const contentEl = document.createElement('div');
       contentEl.className = 'entry-content';
-      contentEl.innerHTML = cleanHtml(entry.content, entry.images);
-      attachCheckboxHandlers(contentEl, entry);
+      renderBlocks(contentEl, entry);
 
       const actions = document.createElement('div');
       actions.className = 'entry-actions';
@@ -2281,8 +3468,7 @@
         actions.style.display = 'flex';
         versionIdx = versions.length - 1;
         card.classList.remove('history-viewing');
-        contentEl.innerHTML = cleanHtml(entry.content, entry.images);
-        attachCheckboxHandlers(contentEl, entry);
+        renderBlocks(contentEl, entry);
         dateText.textContent = relativeTime(ts);
       };
 
@@ -2368,8 +3554,7 @@
         contentEl.innerHTML = cleanHtml(versions[versionIdx].content, entry.images);
         applyTodoMarkup(contentEl);
         attachCodeCopyButtons(contentEl);
-        // Remove interactive elements (x buttons, add triggers) and disable checkboxes
-        contentEl.querySelectorAll('.todo-x').forEach(x => x.remove());
+        // Read-only history: disable the checkboxes (no click-to-edit here).
         contentEl.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.disabled = true; });
         prevBtn.disabled = versionIdx === 0;
         nextBtn.disabled = isCurrent;
@@ -2398,7 +3583,10 @@
       const histDateEl = document.createElement('span');
       histDateEl.className = 'entry-date';
       histNav.appendChild(histActions);
-      histRight.appendChild(histDateEl);
+      // Date is a direct child of histNav (not nested in histRight) so it can drop
+      // to its own line above the buttons on narrow screens; its .entry-date
+      // margin-left:auto keeps it right-aligned, just left of the nav buttons, on wide.
+      histNav.appendChild(histDateEl);
       histRight.appendChild(prevBtn);
       histRight.appendChild(label);
       histRight.appendChild(nextBtn);
@@ -2415,7 +3603,8 @@
       // ── View mode ──
       function buildViewMode(updatedEntry) {
         if (updatedEntry) entry = updatedEntry;
-        card.classList.remove('editing'); // release the sticky button row
+        card.classList.remove('editing', 'editing-full'); // release sticky bar
+        if (card.__ridge) card.__ridge.style.display = 'none';
         actions.style.display = 'flex';
         actions.innerHTML = '';
         const entryIsOwn = entry.owner === currentUserEmail;
@@ -2449,19 +3638,45 @@
 
         if (entryIsOwn) {
           const shareBtn = document.createElement('button');
-          shareBtn.innerHTML = entry.shared ? ICON.share : ICON.unshare;
-          shareBtn.title = entry.shared ? 'Unshare' : 'Share';
-          if (entry.shared) shareBtn.style.cssText = 'background:#7bae7f;border-color:#7bae7f;color:#fff';
-          shareBtn.addEventListener('click', async () => {
-            await updateDoc(doc(db, 'entries', entry.id), { shared: !entry.shared });
-          });
+          if (isRejectedMine(entry)) {
+            // A recipient set this shared note aside — rose link cue (mirrors their
+            // set-aside button). Tap to stop sharing it; re-sharing later returns it to
+            // the unlinked state for both, since hiddenFor is never cleared.
+            shareBtn.innerHTML = ICON.link;
+            shareBtn.title = 'Set aside by recipient — tap to unshare';
+            shareBtn.style.cssText = 'background:#d4728c;border-color:#d4728c;color:#fff';
+            shareBtn.addEventListener('click', async () => {
+              await updateDoc(doc(db, 'entries', entry.id), { shared: false });
+            });
+          } else {
+            shareBtn.innerHTML = entry.shared ? ICON.share : ICON.unshare;
+            shareBtn.title = entry.shared ? 'Unshare' : 'Share';
+            if (entry.shared) shareBtn.style.cssText = 'background:#7bae7f;border-color:#7bae7f;color:#fff';
+            shareBtn.addEventListener('click', async () => {
+              await updateDoc(doc(db, 'entries', entry.id), { shared: !entry.shared });
+            });
+          }
           actions.appendChild(shareBtn);
         } else {
-          const ownerLabel = document.createElement('span');
-          ownerLabel.className = 'entry-date';
-          // TODO: Set aliases in Firestore
-          ownerLabel.textContent = USER_ALIASES[entry.owner] || (entry.owner || '').split('@')[0];
-          actions.appendChild(ownerLabel);
+          // Recipient's slot mirrors the owner's share button: a link toggle for
+          // MY personal link to this note (hiddenFor), leaving the owner's copy alone.
+          const linkBtn = document.createElement('button');
+          linkBtn.innerHTML = ICON.link;
+          if (isSetAside(entry)) {
+            // Recover: one tap, no confirm (harmless) — filled rose link.
+            linkBtn.title = 'Add back to my list';
+            linkBtn.style.cssText = 'background:#d4728c;border-color:#d4728c;color:#fff';
+            linkBtn.addEventListener('click', async () => {
+              await updateDoc(doc(db, 'entries', entry.id), { hiddenFor: arrayRemove(currentUserEmail) });
+            });
+          } else {
+            // Set aside: two-tap arm-to-confirm, reusing the trash's cooldown.
+            linkBtn.title = 'Set aside (remove from my list)';
+            confirmButton(linkBtn, ICON.link, async () => {
+              await updateDoc(doc(db, 'entries', entry.id), { hiddenFor: arrayUnion(currentUserEmail) });
+            });
+          }
+          actions.appendChild(linkBtn);
         }
 
         actions.appendChild(dateEl);
@@ -2487,10 +3702,10 @@
 
         versionIdx = versions.length - 1;
         card.classList.remove('history-viewing');
-        contentEl.innerHTML = cleanHtml(entry.content, entry.images);
-        attachCheckboxHandlers(contentEl, entry);
+        renderBlocks(contentEl, entry);
         dateText.textContent = relativeTime(ts);
       }
+      card.__toView = buildViewMode; // block editors call this to restore view mode
 
       // ── Edit mode ──
       function buildEditMode(initialValue, makeCurrentOnSave, returnToHistory) {
@@ -2528,7 +3743,7 @@
         attachImageInput(textarea);
         textarea.focus(); // scroll the caret (at end) into view, like mobile does
 
-        card.classList.add('editing'); // pin the sticky button row
+        card.classList.add('editing', 'editing-full'); // sticky bar + full-height ridge
         actions.style.display = 'flex';
         actions.innerHTML = '';
         const saveBtn = document.createElement('button');
@@ -2588,10 +3803,9 @@
         const cancelEdit = () => {
           activeEdits.delete(entry.id);
           pendingImages.delete(key);
-          card.classList.remove('editing'); // release the sticky button row
-          contentEl.innerHTML = cleanHtml(entry.content, entry.images);
-          attachCheckboxHandlers(contentEl, entry);
+          card.classList.remove('editing', 'editing-full'); // release sticky bar + ridge
           textarea.replaceWith(contentEl);
+          renderBlocks(contentEl, entry);
           if (returnToHistory) {
             historyOpen = true; // returning to history view (updateHistoryView needs this)
             actions.style.display = 'none';
@@ -2606,7 +3820,10 @@
           const newContent = realValue();
           refreshSizeState(newContent); // flush throttle so the guard reflects the latest text
           if (saveBtn.disabled) return; // over the 1 MiB document limit
-          const changed = newContent && newContent !== entry.content;
+          // Any content difference is a save — INCLUDING emptying the note (the
+          // Clear action), which archives the old content to history and keeps the
+          // note as an empty, recoverable entry rather than discarding the edit.
+          const changed = newContent !== entry.content;
           const restoring = makeCurrentOnSave && newContent === initialValue && newContent !== entry.content;
           if (changed || restoring) {
             // Build the images map: existing + pasted, garbage-collecting any image
@@ -2620,10 +3837,9 @@
             const hadImages = entry.images && Object.keys(entry.images).length > 0;
 
             activeEdits.delete(entry.id);
-            entry.images = images; // keep local copy in sync for optimistic render
+            entry.content = newContent; // keep local copy in sync so buildViewMode renders it
+            entry.images = images;
             textarea.replaceWith(contentEl);
-            contentEl.innerHTML = cleanHtml(newContent, images);
-            attachCheckboxHandlers(contentEl, { ...entry, content: newContent });
             ts = new Date();
             buildViewMode();
             const payload = { content: newContent, editHistory: arrayUnion(archived) };
@@ -2654,23 +3870,7 @@
           else if (e.key === 'Enter') { handleListContinuation(e, textarea); }
         });
 
-        // Tool buttons on the left; save/cancel on the right — where the Edit
-        // button that entered this mode sat, so the click target stays put.
-        // Tools sit tight together (just the 8px flex gap, no extra margin);
-        const headerBtn = makeHeaderButton(textarea);
-        actions.appendChild(headerBtn);
-        const fmtBtn = makeFormatButton(textarea);
-        actions.appendChild(fmtBtn);
-        const cycleEl = makeCycleButton(textarea);
-        actions.appendChild(cycleEl);
-        const linkBtn = makeLinkButton(textarea);
-        actions.appendChild(linkBtn);
-        const imgBtn = makeImageButton(textarea);
-        actions.appendChild(imgBtn);
-        actions.appendChild(escHint);
-        cancelBtn.style.marginLeft = 'auto'; // push cancel + save to the right
-        actions.appendChild(cancelBtn);
-        actions.appendChild(saveBtn);
+        mountEditTools(actions, textarea, [cancelBtn, saveBtn], escHint);
         refreshSizeState();
         // Re-fit once the sticky action row is in the DOM (its height affects
         // where the caret band lands), then pull the caret into view.
@@ -2690,6 +3890,7 @@
     let renderChunkScheduled = false;
     function renderEntries() {
       const tokens = strip(currentFilter).split(/\s+/).filter(Boolean);
+      updateViewBtn(); // refresh the Shared-filter set-aside badge as notes change
 
       const orderedCards = [];
       const cardScores = [];
@@ -2702,6 +3903,7 @@
       for (let entry of allEntries) {
         // View mode filter
         const isOwn = entry.owner === currentUserEmail;
+        if (viewMode === 'all' && isSetAside(entry)) continue;   // set-aside notes leave the active list
         if (viewMode === 'unshared' && (!isOwn || entry.shared)) continue;
         if (viewMode === 'shared' && !entry.shared) continue;
         if (tokens.length) {
@@ -2736,12 +3938,12 @@
           if (histChanged) {
             cardCache.delete(entry.id);
           } else {
-            // Update in-place if only content or shared changed
-            if (prev.content !== entry.content || prev.shared !== entry.shared) {
+            // Update in-place if content, shared, or my set-aside state changed
+            if (prev.content !== entry.content || prev.shared !== entry.shared ||
+                (prev.hiddenFor || []).join(',') !== (entry.hiddenFor || []).join(',')) {
               cached.entry = entry;
-              cached.card.className = 'entry-card' + (entry.shared ? ' shared' : '');
-              cached.contentEl.innerHTML = cleanHtml(entry.content, entry.images);
-              attachCheckboxHandlers(cached.contentEl, entry);
+              cached.card.className = cardClassFor(entry);
+              renderBlocks(cached.contentEl, entry);
               const hist = entry.editHistory || [];
               const ts = hist.length ? new Date(hist[hist.length - 1].editedAt) : (entry.createdAt?.toDate?.() || new Date());
               cached.dateText.textContent = relativeTime(ts);
@@ -2872,20 +4074,11 @@
     // ── Event listeners ──
     const cancelNewBtn = document.getElementById('cancel-new');
     const newEscHint = document.getElementById('new-esc-hint');
-    // Mirror the edit-mode action row exactly: tools on the left, then the
-    // esc-hint, then cancel (✕) and save (✓) pushed to the right.
+    // Same collapsible edit toolbar as the block / whole-note editors.
     appendBtn.innerHTML = ICON.save;
     cancelNewBtn.innerHTML = ICON.close;
     const newActions = document.getElementById('new-actions');
-    newActions.appendChild(makeHeaderButton(newEntry));
-    newActions.appendChild(makeFormatButton(newEntry));
-    newActions.appendChild(makeCycleButton(newEntry));
-    newActions.appendChild(makeLinkButton(newEntry));
-    newActions.appendChild(makeImageButton(newEntry));
-    newActions.appendChild(newEscHint);       // move hint after the tools
-    cancelNewBtn.style.marginLeft = 'auto';    // push cancel + save to the right
-    newActions.appendChild(cancelNewBtn);
-    newActions.appendChild(appendBtn);         // save rightmost
+    mountEditTools(newActions, newEntry, [cancelNewBtn, appendBtn], newEscHint);
     // Image session for the composer (the new note isn't a doc yet → key '__new__').
     newEntry._imgKey = '__new__';
     newEntry._imgOrder = [];
