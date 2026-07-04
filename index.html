@@ -631,7 +631,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-07-04 19:28</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-07-04 23:02</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -1482,7 +1482,7 @@
       else (zBot ? zBot.before(wrap) : contentEl.appendChild(wrap));
 
       const session = sessionFor(entry);
-      activeBlock = { wrap, ta, entry, contentEl, card, block: null, order: [], session, escHint: null };
+      activeBlock = { wrap, ta, entry, contentEl, card, block: null, where, order: [], session, escHint: null };
       activeEdits.set(entry.id, { card, block: true });
       card.classList.add('editing');
 
@@ -1647,7 +1647,7 @@
           onReorder: (newOrder) => {
             if (!newOrder || activeBlock !== current) return;
             activeBlock = null; activeEdits.delete(entry.id);
-            const edited = readSrc() !== text;
+            const edited = readSrc() !== text || prefix !== (m ? m[1] : ''); // prefix carries a checkbox toggle
             let lines = entry.content.split('\n');
             if (edited) lines[lineIdx] = prefix + readSrc().trim(); // keep row even if empty
             const reordered = reorderLines(lines, newOrder);
@@ -1656,6 +1656,7 @@
             else if (reordered != null) reorderEntryContent(entry, finalContent); // move → none
             // Reordering a row lands in view mode — the row's text can be a duplicate,
             // so re-finding "the row I moved" by text would re-open the wrong one.
+            blockSessions.delete(entry.id); // burst over (view mode) — match the other terminal paths
             card.__toView();
           },
         });
@@ -1696,7 +1697,8 @@
           if (activeBlock !== current) return;
           activeBlock = null; activeEdits.delete(entry.id);
           // Save on the way out but keep even an empty row (don't delete on nav).
-          if (readSrc() !== text) commitItemLine(entry, lineIdx, prefix + readSrc().trim(), session);
+          // Compare prefix too — a checkbox toggle changes only the prefix, not the text.
+          if (readSrc() !== text || prefix !== (m ? m[1] : '')) commitItemLine(entry, lineIdx, prefix + readSrc().trim(), session);
           card.__toView();
           openNeighbor(entry, contentEl, target, dir);
           return;
@@ -1848,14 +1850,23 @@
       const closing = activeBlock;
       const closingEntry = closing.entry;
       const target = computeSwitchTarget(info.target, info.x, info.y);
-      // If committing the current row empties (deletes) it, the lines below shift
-      // up one — keep an item target's line index pointing at the right row.
-      if (target && target.kind === 'item' && closing.isItem && closing.lineIdx < target.lineIdx
-          && expandFromEdit(closing.ta.value, closing.order).trim() === '') {
-        target.lineIdx -= 1;
-      }
+      // target's indices were captured against pre-commit content; committing the
+      // current editor can add/remove lines ABOVE the target, shifting its index by
+      // the net change in total line count. Shift only a target below the closing edit.
+      const closingStart = closing.isItem ? closing.lineIdx
+        : (closing.block ? closing.block.start
+        : (closing.where === 'top' ? 0 : Infinity)); // new-paragraph zone: top inserts at 0, bottom after all rows
+      const beforeLen = closingEntry.content.split('\n').length;
       closing.commit(true, { keepSession: true });        // keep; end below if we've left
-      if (target) openBlockTarget(target);
+      if (target) {
+        const delta = closingEntry.content.split('\n').length - beforeLen;
+        const idx = target.lineIdx ?? target.start;
+        if (delta && idx != null && closingStart <= idx) {
+          if (target.lineIdx != null) target.lineIdx += delta;
+          if (target.start != null) target.start += delta;
+        }
+        openBlockTarget(target);
+      }
       // End the closed note's history-coalescing session unless we're still in it
       // (a block-to-block hop within the same note keeps one session = one version).
       if (!activeBlock || activeBlock.entry !== closingEntry) blockSessions.delete(closingEntry.id);
@@ -2274,27 +2285,58 @@
       return detectFormatSpan(value, s, e)?.id || 'plain';
     }
 
+    // Leading block marker (heading #, blockquote >, list bullet/number/todo) —
+    // inline formatting must never wrap this, only the content after it.
+    const BLOCK_MARKER_RE = /^\s*(?:#{1,6}\s+|>+\s*|(?:[-*+]|\d+\.)\s+(?:\([ xX]\)\s*|\[[ xX]\]\s*)?)/;
+
+    // A multi-line selection: inline emphasis can't span block/list boundaries, so
+    // format each touched line's content on its own (skipping its block marker).
+    // Toggles OFF only when every content line is already the target format.
+    function applyFormatMultiline(textarea, start, end, targetId) {
+      const value = textarea.value;
+      const from = value.lastIndexOf('\n', start - 1) + 1;
+      let to = value.indexOf('\n', end); if (to === -1) to = value.length;
+      const mark = FORMAT_MARK[targetId] || '';
+      const parts = value.slice(from, to).split('\n').map(l => {
+        const mk = l.match(BLOCK_MARKER_RE);
+        const prefix = mk ? mk[0] : '';
+        const body = l.slice(prefix.length);
+        const lead = body.length - body.trimStart().length;
+        const trail = body.length - body.trimEnd().length;
+        return { prefix, lead: body.slice(0, lead), core: body.slice(lead, body.length - trail), tail: body.slice(body.length - trail) };
+      });
+      const isWrapped = c => mark && c.length >= 2 * mark.length && c.startsWith(mark) && c.endsWith(mark);
+      const contentful = parts.filter(p => p.core);
+      const allWrapped = mark && contentful.length > 0 && contentful.every(p => isWrapped(p.core));
+      const replacement = parts.map(p => {
+        if (!p.core) return p.prefix + p.lead + p.core + p.tail;   // blank / marker-only line
+        const bare = isWrapped(p.core) ? p.core.slice(mark.length, -mark.length) : p.core;
+        return p.prefix + p.lead + (allWrapped ? bare : mark + bare + mark) + p.tail;
+      }).join('\n');
+      textarea.value = value.slice(0, from) + replacement + value.slice(to);
+      textarea.selectionStart = from;
+      textarea.selectionEnd = from + replacement.length;
+      textarea.dispatchEvent(new Event('input'));
+      textarea.focus();
+    }
+
     function applyFormat(textarea, targetId) {
       const { selectionStart, selectionEnd, value } = textarea;
       let [s, e] = formatRange(value, selectionStart, selectionEnd);
-      // Never let inline formatting (**/*/~~) swallow a leading block marker
-      // (heading #, blockquote >, list bullet/number/todo) — clamp the start past
-      // it so a whole-line selection wraps only the content, not the marker.
+      // Trim marker chars (* ~ _) off the ends so detection sees the bare content,
+      // wherever the selection boundaries landed relative to the markers — e.g.
+      // grabbing only one asterisk of a ** pair no longer fools it into `*…*` italic.
+      while (s < e && /[*~_]/.test(value[s])) s++;
+      while (e > s && /[*~_]/.test(value[e - 1])) e--;
+      // A selection spanning more than one line wraps each line's content on its own.
+      if (value.slice(s, e).includes('\n')) return applyFormatMultiline(textarea, s, e, targetId);
+      // Single line: clamp the start past the leading block marker so we wrap only content.
       const lnStart = s === 0 ? 0 : value.lastIndexOf('\n', s - 1) + 1;
-      const mk = value.slice(lnStart, e).match(/^\s*(?:#{1,6}\s+|>+\s*|(?:[-*+]|\d+\.)\s+(?:\([ xX]\)\s*|\[[ xX]\]\s*)?)/);
+      const mk = value.slice(lnStart, e).match(BLOCK_MARKER_RE);
       if (mk) s = Math.max(s, lnStart + mk[0].length);
-      // The selection may INCLUDE the markers (e.g. selecting **text** whole, not
-      // just the word) — detect that so we toggle the format OFF instead of
-      // wrapping it again (which otherwise doubles the markers each click).
-      let span = null;
-      const sel = value.slice(s, e);
-      for (const [id, m] of [['bold', '**'], ['strike', '~~'], ['italic', '*'], ['italic', '_']]) {
-        if (sel.length >= 2 * m.length && sel.startsWith(m) && sel.endsWith(m)) {
-          span = { id, mark: m, open: s, close: e - m.length };
-          break;
-        }
-      }
-      if (!span) span = detectFormatSpan(value, s, e); // markers outside the selection
+      // detectFormatSpan finds the enclosing markers (now just outside the trimmed
+      // range), so a selection that includes the markers toggles OFF instead of doubling.
+      const span = detectFormatSpan(value, s, e);
       const cur = span?.id || 'plain';
       const target = targetId === cur ? 'plain' : targetId;   // re-picking the active mode removes it
       let before, inner, after;
@@ -2351,6 +2393,7 @@
       let m;
       while ((m = LINK_RE.exec(value)) !== null) {
         const start = m.index, end = start + m[0].length;
+        if (value[start - 1] === '!') continue;   // image ![](...), not a link — never unwrap it
         const overlaps = s0 === e0 ? (s0 >= start && s0 <= end) : (s0 < end && e0 > start);
         if (overlaps) {
           const repl = m[2].trim() || m[1];
@@ -2482,7 +2525,9 @@
     try { EMOJI_RE = new RegExp('\\p{RGI_Emoji}', 'gv'); }
     catch (e) { EMOJI_RE = /(\p{Extended_Pictographic}(\u{1F3FB}-\u{1F3FF})?(‍\p{Extended_Pictographic})*|\p{Regional_Indicator}{2})/gu; }
     function extractEmojis(text) {
-      return (String(text).match(EMOJI_RE) || []).filter(e => /\p{Extended_Pictographic}/u.test(e));
+      // Keep real emoji, drop stray fallback-regex matches. Regional_Indicator = flags
+      // (🇵🇹), ⃣ = keycaps (1️⃣) — neither is Extended_Pictographic, so accept them too.
+      return (String(text).match(EMOJI_RE) || []).filter(e => /[\p{Extended_Pictographic}\p{Regional_Indicator}\u{20E3}]/u.test(e));
     }
     const EMOJI_CATALOG = {
       'Smileys': [
