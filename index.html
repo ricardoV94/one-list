@@ -293,6 +293,27 @@
       gap: 8px;
       align-items: center;
       flex-wrap: wrap;
+      /* Constant full-width divider between the content and the button row. */
+      border-top: 1px solid #eee;
+      padding-top: 8px;
+    }
+    /* Inside a card the row bleeds to the edges (negative side/bottom margins
+       cancel the card's 12px padding) so the divider spans the full width and
+       the buttons keep an even 8px below them; the composer, which has no
+       padding, uses the base rule as-is. */
+    .entry-card .entry-actions { margin: 0 -12px -12px; padding: 8px 12px; }
+
+    /* While editing, the button row sticks to the viewport bottom so it's always
+       reachable — replacing the old height-cap + internal-scroll hack. Its own
+       background lets the content scroll cleanly underneath. */
+    .entry-card.editing .entry-actions {
+      position: sticky; bottom: 0; z-index: 5;
+      background: #fff;
+      border-radius: 0 0 8px 8px;
+    }
+    #input-area.open .entry-actions {
+      position: sticky; bottom: 0; z-index: 5;
+      background: #f5f5f5;
     }
 
     .entry-actions button {
@@ -310,6 +331,8 @@
 
     .entry-actions button:active { background: #eee; }
     .entry-actions button:disabled { opacity: 0.4; cursor: default; }
+    .entry-actions button.btn-save { background: #7bae7f; border-color: #7bae7f; color: #fff; }
+    .entry-actions button.btn-save:active { background: #6a9d6e; }
     .icon-bg { fill: #fff; }
 
 
@@ -415,8 +438,13 @@
     .dark .header-icons button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
     .dark .entry-card { background: #2a2a2a; border-color: #444; }
     .dark .entry-card.shared { border-left-color: #7bae7f; }
+    .dark .entry-actions { border-color: #383838; }
+    .dark .entry-card.editing .entry-actions { background: #2a2a2a; }
+    .dark #input-area.open .entry-actions { background: #1a1a1a; }
     .dark .entry-actions button { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
     .dark .entry-actions button:active { background: #333; }
+    .dark .entry-actions button.btn-save { background: #7bae7f; border-color: #7bae7f; color: #fff; }
+    .dark .entry-actions button.btn-save:active { background: #6a9d6e; }
     .dark .icon-bg { fill: #2a2a2a; }
     .dark .entry-content code { background: #383838; }
     .dark .entry-content pre { background: #383838; }
@@ -457,7 +485,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-07-03 15:59</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-07-04 08:41</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -468,11 +496,10 @@
 
     <div id="input-area">
       <textarea id="new-entry" placeholder="What's on your mind?"></textarea>
-      <div class="entry-actions">
-        <button id="append-btn" class="btn-edit">Save</button>
-        <button id="cancel-new" class="btn-delete">Cancel</button>
+      <div class="entry-actions" id="new-actions">
+        <button id="append-btn" class="btn-edit btn-save" title="Save"></button>
+        <button id="cancel-new" class="btn-delete" title="Cancel"></button>
         <span id="new-esc-hint" class="esc-hint"></span>
-        <span id="new-cycle-slot" style="margin-left:auto;display:inline-flex;gap:6px;"></span>
       </div>
     </div>
 
@@ -1613,6 +1640,11 @@
       link: `<svg ${svgAttrs}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
       grip: `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="9" cy="5" r="1.8"/><circle cx="15" cy="5" r="1.8"/><circle cx="9" cy="12" r="1.8"/><circle cx="15" cy="12" r="1.8"/><circle cx="9" cy="19" r="1.8"/><circle cx="15" cy="19" r="1.8"/></svg>`,
       plus: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+      // Save uses a plain checkmark (confirm). Drawn a touch larger (18 vs 16) so
+      // the primary action reads well; stroke-width trimmed to 1.8 so the *rendered*
+      // line width still matches the 16px icons (2 * 16/24 ≈ 1.8 * 18/24).
+      save: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+      close: `<svg ${svgAttrs}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
     };
 
     // ── Confirm-to-act button helper ──
@@ -1790,57 +1822,65 @@
       return size;
     }
 
-    // Resize a textarea to fit its content WITHOUT yanking the page scroll: the
-    // brief `height:auto` collapse can clamp window scroll on very tall notes.
-    // Grow a textarea to fit its content, but never past the point where its
-    // action-button row (Save/Cancel + format tools, the textarea's next sibling)
-    // would slip off the bottom of the screen. Past that cap the textarea scrolls
-    // internally, so the buttons stay visible at all times.
-    function maxTextareaHeight(ta) {
-      const top = ta.getBoundingClientRect().top;
-      const actions = ta.nextElementSibling;
-      const actionsH = actions ? actions.getBoundingClientRect().height : 44;
-      // Anchoring the cap to `top` keeps the textarea's bottom pinned at
-      // (innerHeight - reserve) regardless of how far the card is scrolled.
-      return Math.max(120, window.innerHeight - top - actionsH - 24);
-    }
+    // Grow a textarea to fit its content. The action row is sticky (pinned to the
+    // viewport bottom while editing), so there's no need to cap the height or
+    // scroll the textarea internally — the buttons stay reachable regardless.
+    // Deliberately does NOT restore window scroll: the browser's native
+    // caret-scroll and keepCaretVisible() need to move the page, and a restore
+    // here would undo them.
     function autosize(ta) {
-      const y = window.scrollY;
       ta.style.height = 'auto';
-      const full = ta.scrollHeight;
-      const max = maxTextareaHeight(ta);
-      ta.style.height = Math.min(full, max) + 'px';
-      ta.style.overflowY = full > max ? 'auto' : 'hidden';
-      if (window.scrollY !== y) window.scrollTo(0, y);
+      ta.style.height = ta.scrollHeight + 'px';
     }
 
-    // Cap is measured from the textarea's viewport top, so a card lower in the
-    // list would otherwise get a shorter editor than one near the top. When the
-    // content is long enough to be capped, pull the card up to a fixed top first
-    // so every long note opens to the same generous height — then recompute.
-    const EDIT_TOP_TARGET = 12;
-    function fitEditArea(ta) {
-      autosize(ta);
-      if (ta.style.overflowY !== 'auto') return;        // short note: shown in full, nothing to equalize
-      const top = ta.getBoundingClientRect().top;
-      if (top > EDIT_TOP_TARGET) {
-        window.scrollBy(0, top - EDIT_TOP_TARGET);
-        autosize(ta);
-      }
+    // Caret's viewport Y (top of the caret's line). Measured with a hidden mirror
+    // that mimics the textarea's box + font and holds the text up to the caret, so
+    // it's accurate even when long lines WRAP — a newline count can't tell where a
+    // wrapped line puts the caret, which makes estimate-based scrolling both
+    // under-fire (caret hides) and over-fire (jumps when it's actually in view).
+    let caretMirror = null;
+    function caretViewportTop(ta) {
+      const div = caretMirror || (caretMirror = document.createElement('div'));
+      const cs = getComputedStyle(ta);
+      const copy = ['boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddingBottom',
+        'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth',
+        'borderLeftWidth', 'fontFamily', 'fontSize', 'fontWeight', 'fontStyle',
+        'letterSpacing', 'lineHeight', 'textTransform', 'wordSpacing', 'tabSize'];
+      copy.forEach(p => { div.style[p] = cs[p]; });
+      div.style.position = 'absolute';
+      div.style.visibility = 'hidden';
+      div.style.left = '-9999px';
+      div.style.top = '0';
+      div.style.height = 'auto';
+      div.style.whiteSpace = 'pre-wrap';
+      div.style.overflowWrap = 'break-word';
+      div.textContent = ta.value.slice(0, ta.selectionEnd);
+      const marker = document.createElement('span');
+      marker.textContent = '​';
+      div.appendChild(marker);
+      document.body.appendChild(div);
+      const y = marker.offsetTop; // from the mirror's border box, matching ta's box
+      document.body.removeChild(div);
+      div.textContent = '';
+      return ta.getBoundingClientRect().top + y - ta.scrollTop;
     }
 
-    // Re-cap any open textareas when the viewport changes (mobile keyboard
-    // sliding in/out, rotation) so the action row never gets pushed off-screen.
-    let resizeRaf = null;
-    window.addEventListener('resize', () => {
-      if (resizeRaf) return;
-      resizeRaf = requestAnimationFrame(() => {
-        resizeRaf = null;
-        document.querySelectorAll('.edit-textarea, #new-entry').forEach(ta => {
-          if (ta.offsetParent !== null) autosize(ta);
-        });
-      });
-    });
+    // Keep the caret inside a comfortable band while editing: the button row is
+    // sticky at the viewport bottom, so a caret typed low would slide behind it,
+    // and a caret scrolled off the top goes unseen. Only scroll when the caret
+    // actually leaves the band — never when it's already comfortably in view.
+    function keepCaretVisible(ta) {
+      const host = ta.closest('.entry-card.editing') || ta.closest('#input-area.open');
+      const bar = host && host.querySelector('.entry-actions');
+      if (!bar) return;
+      const lh = parseFloat(getComputedStyle(ta).lineHeight) || 20;
+      const caretTop = caretViewportTop(ta);
+      const caretBottom = caretTop + lh;
+      const barTop = bar.getBoundingClientRect().top;
+      const margin = 16;   // gap kept between the caret and the bar / the top
+      if (caretBottom > barTop - margin) window.scrollBy(0, caretBottom - (barTop - margin));
+      else if (caretTop < margin) window.scrollBy(0, caretTop - margin);
+    }
 
     // ── Inline images (pasted / captured) ──
     const IMG_MAX_EDGE = 960;  // longest side after downscale
@@ -2364,7 +2404,7 @@
       histRight.appendChild(nextBtn);
       if (hasHistory) {
         const closeHistBtn = document.createElement('button');
-        closeHistBtn.textContent = '✕';
+        closeHistBtn.innerHTML = ICON.close;
         closeHistBtn.title = 'Close history';
         closeHistBtn.addEventListener('click', closeHistory);
         histRight.appendChild(closeHistBtn);
@@ -2375,6 +2415,7 @@
       // ── View mode ──
       function buildViewMode(updatedEntry) {
         if (updatedEntry) entry = updatedEntry;
+        card.classList.remove('editing'); // release the sticky button row
         actions.style.display = 'flex';
         actions.innerHTML = '';
         const entryIsOwn = entry.owner === currentUserEmail;
@@ -2478,6 +2519,7 @@
         };
         textarea.addEventListener('input', () => {
           autosize(textarea);
+          keepCaretVisible(textarea);
           clearTimeout(sizeTrail);
           const since = Date.now() - sizeThrottleAt;
           if (since >= 150) commitEditState();
@@ -2486,14 +2528,17 @@
         attachImageInput(textarea);
         textarea.focus(); // scroll the caret (at end) into view, like mobile does
 
+        card.classList.add('editing'); // pin the sticky button row
         actions.style.display = 'flex';
         actions.innerHTML = '';
         const saveBtn = document.createElement('button');
-        saveBtn.className = 'btn-edit';
-        saveBtn.textContent = 'Save';
+        saveBtn.className = 'btn-edit btn-save';
+        saveBtn.innerHTML = ICON.save;
+        saveBtn.title = 'Save';
         const cancelBtn = document.createElement('button');
         cancelBtn.className = 'btn-delete';
-        cancelBtn.textContent = 'Cancel';
+        cancelBtn.innerHTML = ICON.close; // same icon as the close-history action
+        cancelBtn.title = 'Cancel';
         const escHint = document.createElement('span');
         escHint.className = 'esc-hint';
 
@@ -2543,6 +2588,7 @@
         const cancelEdit = () => {
           activeEdits.delete(entry.id);
           pendingImages.delete(key);
+          card.classList.remove('editing'); // release the sticky button row
           contentEl.innerHTML = cleanHtml(entry.content, entry.images);
           attachCheckboxHandlers(contentEl, entry);
           textarea.replaceWith(contentEl);
@@ -2608,29 +2654,27 @@
           else if (e.key === 'Enter') { handleListContinuation(e, textarea); }
         });
 
-        actions.appendChild(saveBtn);
-        actions.appendChild(cancelBtn);
-        actions.appendChild(escHint);
+        // Tool buttons on the left; save/cancel on the right — where the Edit
+        // button that entered this mode sat, so the click target stays put.
+        // Tools sit tight together (just the 8px flex gap, no extra margin);
         const headerBtn = makeHeaderButton(textarea);
-        headerBtn.style.marginLeft = 'auto';
         actions.appendChild(headerBtn);
         const fmtBtn = makeFormatButton(textarea);
-        fmtBtn.style.marginLeft = '6px';
         actions.appendChild(fmtBtn);
         const cycleEl = makeCycleButton(textarea);
-        cycleEl.style.marginLeft = '6px';
         actions.appendChild(cycleEl);
         const linkBtn = makeLinkButton(textarea);
-        linkBtn.style.marginLeft = '6px';
         actions.appendChild(linkBtn);
         const imgBtn = makeImageButton(textarea);
-        imgBtn.style.marginLeft = '6px';
         actions.appendChild(imgBtn);
+        actions.appendChild(escHint);
+        cancelBtn.style.marginLeft = 'auto'; // push cancel + save to the right
+        actions.appendChild(cancelBtn);
+        actions.appendChild(saveBtn);
         refreshSizeState();
-        // The first autosize ran before this action row existed (so its height
-        // couldn't be reserved); recompute now that the buttons are in the DOM,
-        // then fit it consistently regardless of where the card sat in the list.
-        requestAnimationFrame(() => fitEditArea(textarea));
+        // Re-fit once the sticky action row is in the DOM (its height affects
+        // where the caret band lands), then pull the caret into view.
+        requestAnimationFrame(() => { autosize(textarea); keepCaretVisible(textarea); });
       }
 
       card.appendChild(contentEl);
@@ -2828,11 +2872,20 @@
     // ── Event listeners ──
     const cancelNewBtn = document.getElementById('cancel-new');
     const newEscHint = document.getElementById('new-esc-hint');
-    document.getElementById('new-cycle-slot').appendChild(makeHeaderButton(newEntry));
-    document.getElementById('new-cycle-slot').appendChild(makeFormatButton(newEntry));
-    document.getElementById('new-cycle-slot').appendChild(makeCycleButton(newEntry));
-    document.getElementById('new-cycle-slot').appendChild(makeLinkButton(newEntry));
-    document.getElementById('new-cycle-slot').appendChild(makeImageButton(newEntry));
+    // Mirror the edit-mode action row exactly: tools on the left, then the
+    // esc-hint, then cancel (✕) and save (✓) pushed to the right.
+    appendBtn.innerHTML = ICON.save;
+    cancelNewBtn.innerHTML = ICON.close;
+    const newActions = document.getElementById('new-actions');
+    newActions.appendChild(makeHeaderButton(newEntry));
+    newActions.appendChild(makeFormatButton(newEntry));
+    newActions.appendChild(makeCycleButton(newEntry));
+    newActions.appendChild(makeLinkButton(newEntry));
+    newActions.appendChild(makeImageButton(newEntry));
+    newActions.appendChild(newEscHint);       // move hint after the tools
+    cancelNewBtn.style.marginLeft = 'auto';    // push cancel + save to the right
+    newActions.appendChild(cancelNewBtn);
+    newActions.appendChild(appendBtn);         // save rightmost
     // Image session for the composer (the new note isn't a doc yet → key '__new__').
     newEntry._imgKey = '__new__';
     newEntry._imgOrder = [];
@@ -2841,7 +2894,6 @@
     function closeNewEntry() {
       newEntry.value = '';
       newEntry.style.height = 'auto';
-      newEntry.style.overflowY = 'hidden';
       newEscHint.textContent = '';
       newEntry.classList.remove('over-limit');
       appendBtn.disabled = false;
@@ -2877,6 +2929,7 @@
 
     newEntry.addEventListener('input', () => {
       autosize(newEntry);
+      keepCaretVisible(newEntry);
       refreshNewSizeState();
     });
 
