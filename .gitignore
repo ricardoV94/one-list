@@ -1,2 +1,7 @@
 .firebase/
 node_modules/
+
+# Scratch demos / mockups live here — never committed, never deployed.
+# (.gitkeep is kept so the folder persists in a fresh clone.)
+mocks/*
+!mocks/.gitkeep
