@@ -31,7 +31,7 @@
   <script>window.__bootMark = function () {};</script>
   <!--
   <script>
-    window.__BUILD = '2026-07-05 19:59'; // replaced with the deploy timestamp by stamp-deploy.sh
+    window.__BUILD = '2026-07-07 09:13'; // replaced with the deploy timestamp by stamp-deploy.sh
     window.__bootTimeline = [];
     window.__bootMark = function (label) {
       var t = performance.now();
@@ -764,7 +764,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-07-05 19:59</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-07-07 09:13</span></h1>
       <div class="header-icons">
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
@@ -2207,7 +2207,10 @@
     //   detect(textarea)   -> id of the mode currently active at the cursor
     //   apply(textarea, id, current) -> mutate the textarea to that mode
     //   iconFor(id) / labelFor(mode) -> popover + button glyphs/titles
-    function makeCyclePopoverButton(textarea, { modes, detect, apply, iconFor, labelFor }) {
+    //   suggest(detectedId, textarea) -> id to show on the button face / apply on
+    //     click (defaults to the next mode in `modes`). Lets a button start from a
+    //     smarter default than "next" when nothing is active at the cursor.
+    function makeCyclePopoverButton(textarea, { modes, detect, apply, iconFor, labelFor, suggest }) {
       const wrapper = document.createElement('div');
       wrapper.className = 'cycle-wrapper';
       const btn = document.createElement('button');
@@ -2220,9 +2223,10 @@
       wrapper.append(btn, popover);
 
       const nextOf = (id) => modes[(modes.findIndex(m => m.id === id) + 1) % modes.length];
+      const suggestId = (id) => (suggest ? suggest(id, textarea) : nextOf(id).id);
 
       function updateBtn() {
-        const next = nextOf(detect(textarea));
+        const next = modes.find(m => m.id === suggestId(detect(textarea))) || nextOf(detect(textarea));
         btn.innerHTML = iconFor(next.id);
         btn.title = labelFor(next);
       }
@@ -2251,7 +2255,7 @@
         e.preventDefault();
         e.stopPropagation();
         const current = detect(textarea);
-        apply(textarea, nextOf(current).id, current);
+        apply(textarea, suggestId(current), current);
         updateBtn();
       });
 
@@ -2306,6 +2310,21 @@
       return value.slice(fullStart, fullEnd).split('\n');
     }
 
+    // Which list style is most used across the whole note — the button suggests
+    // that one first, so a note full of numbered items keeps offering numbered.
+    function mostUsedListMode(textarea) {
+      const counts = { todo: 0, numbered: 0, bullet: 0 };
+      for (const line of textarea.value.split('\n')) {
+        if (!line.trim()) continue;
+        if (/^\s*[-*]\s+(?:\([ xX]\)|\[[ xX]\])/.test(line)) counts.todo++;
+        else if (/^\s*\d+\.\s+/.test(line)) counts.numbered++;
+        else if (/^\s*[-*]\s+/.test(line)) counts.bullet++;
+      }
+      let best = null, bestN = 0;
+      for (const k of ['todo', 'numbered', 'bullet']) if (counts[k] > bestN) { bestN = counts[k]; best = k; }
+      return best;
+    }
+
     function makeCycleButton(textarea) {
       return makeCyclePopoverButton(textarea, {
         modes: LIST_MODES,
@@ -2313,6 +2332,12 @@
         apply: (ta, id) => applyListMode(ta, id),
         iconFor: (id) => listModeIcon(id),
         labelFor: (m) => m.label,
+        // From a non-list line, suggest the note's most-used list style (falling
+        // back to the fixed cycle order when the note has no lists yet).
+        suggest: (id, ta) => {
+          const nextId = LIST_MODES[(LIST_MODES.findIndex(m => m.id === id) + 1) % LIST_MODES.length].id;
+          return id === 'plain' ? (mostUsedListMode(ta) || nextId) : nextId;
+        },
       });
     }
 
@@ -2383,6 +2408,13 @@
         apply: (ta, id) => applyHeader(ta, id),
         iconFor: (id) => headerIcon(id),
         labelFor: (m) => m.label,
+        // Once the note already has a heading, a title is likely set — so from a
+        // plain line suggest Heading 2 (a subsection) instead of Heading 1.
+        suggest: (id, ta) => {
+          const nextId = HEADER_MODES[(HEADER_MODES.findIndex(m => m.id === id) + 1) % HEADER_MODES.length].id;
+          if (id !== 'plain') return nextId;
+          return /^\s{0,3}#{1,6}\s/m.test(ta.value) ? 'h2' : 'h1';
+        },
       });
     }
 
@@ -2398,6 +2430,20 @@
     ];
     const FORMAT_MARK = { bold: '**', italic: '*', strike: '~~' };
     const WORDCH = /[\p{L}\p{N}_]/u;
+
+    // Remove the inline emphasis marks the format button manages — bold `**`,
+    // italic `*`, strikethrough `~~`. Underscores are NOT emphasis here, and inline
+    // code ` ` is not a format mode, so both are left intact, as are links/images
+    // whose brackets contain no emphasis. Used so wrapping a chunk in one format
+    // first clears any conflicting inner marks — you always get a clean `**…**`
+    // instead of `**a *i* b**` — and so "Regular text" over a mixed selection
+    // strips everything, not one span.
+    function stripInlineMarks(s) {
+      return s
+        .replace(/\*\*(.*?)\*\*/g, '$1')
+        .replace(/\*([^*]+?)\*/g, '$1')
+        .replace(/~~(.*?)~~/g, '$1');
+    }
 
     function formatRange(value, start, end) {
       while (start > 0 && WORDCH.test(value[start - 1])) start--;
@@ -2468,8 +2514,10 @@
       const allWrapped = mark && contentful.length > 0 && contentful.every(p => isWrapped(p.core));
       const replacement = parts.map(p => {
         if (!p.core) return p.prefix + p.lead + p.core + p.tail;   // blank / marker-only line
-        const bare = isWrapped(p.core) ? p.core.slice(mark.length, -mark.length) : p.core;
-        return p.prefix + p.lead + (allWrapped ? bare : mark + bare + mark) + p.tail;
+        // Strip inner marks first, so 'plain' clears everything and any format
+        // wraps clean content; toggle OFF when the whole selection is this format.
+        const bare = stripInlineMarks(p.core);
+        return p.prefix + p.lead + (!mark || allWrapped ? bare : mark + bare + mark) + p.tail;
       }).join('\n');
       textarea.value = value.slice(0, from) + replacement + value.slice(to);
       textarea.selectionStart = from;
@@ -2506,11 +2554,12 @@
       } else {
         before = value.slice(0, s); inner = value.slice(s, e); after = value.slice(e);
       }
+      const bareInner = stripInlineMarks(inner);   // clear inner marks before (re)wrapping
       const tMark = target === 'plain' ? '' : FORMAT_MARK[target];
-      textarea.value = before + tMark + inner + tMark + after;
+      textarea.value = before + tMark + bareInner + tMark + after;
       const ns = before.length + tMark.length;
       textarea.selectionStart = ns;
-      textarea.selectionEnd = ns + inner.length;
+      textarea.selectionEnd = ns + bareInner.length;
       textarea.dispatchEvent(new Event('input'));
       textarea.focus();
     }
@@ -2530,6 +2579,21 @@
         apply: (ta, id, cur) => applyFormat(ta, id, cur),
         iconFor: (id) => formatIcon(id),
         labelFor: (m) => m.label,
+        // If the selection already holds any inline formatting (even mixed marks
+        // detectFormat can't name as one span), offer "Regular text" to clear it.
+        // Look at the same logical range applyFormat acts on — grown to word
+        // boundaries, with stray edge marker chars trimmed — so a lone/edge `*`
+        // (which can't form a pair) never falsely flips the suggestion to plain.
+        suggest: (id, ta) => {
+          const nextId = FORMAT_MODES[(FORMAT_MODES.findIndex(m => m.id === id) + 1) % FORMAT_MODES.length].id;
+          const { selectionStart, selectionEnd, value } = ta;
+          if (selectionStart === selectionEnd) return nextId;
+          let [s, e] = formatRange(value, selectionStart, selectionEnd);
+          while (s < e && /[*~_]/.test(value[s])) s++;
+          while (e > s && /[*~_]/.test(value[e - 1])) e--;
+          const seg = value.slice(s, e);
+          return stripInlineMarks(seg) !== seg ? 'plain' : nextId;
+        },
       });
     }
 
@@ -3303,9 +3367,17 @@
       const lh = parseFloat(getComputedStyle(ta).lineHeight) || 20;
       const caretTop = caretViewportTop(ta);
       const caretBottom = caretTop + lh;
-      const barTop = bar.getBoundingClientRect().top;
+      const barRect = bar.getBoundingClientRect();
+      const barTop = barRect.top;
       const margin = 16;   // gap kept between the caret and the bar / the top
-      if (caretBottom > barTop - margin) window.scrollBy(0, caretBottom - (barTop - margin));
+      // The bar only hides the caret when it's PINNED to the viewport bottom. When
+      // the card is short the bar sits in normal flow above the fold — the caret
+      // above it is fully visible, and scrolling would move caret and bar together,
+      // never resolving (runaway scroll to the top). So gate the downward scroll on
+      // the bar actually being pinned at the bottom (bottom: var(--kb-inset)).
+      const kbInset = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--kb-inset')) || 0;
+      const pinned = barRect.bottom >= window.innerHeight - kbInset - 2;
+      if (pinned && caretBottom > barTop - margin) window.scrollBy(0, caretBottom - (barTop - margin));
       else if (caretTop < margin) window.scrollBy(0, caretTop - margin);
     }
 
