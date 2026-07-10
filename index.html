@@ -4509,9 +4509,9 @@
           const newContent = realValue();
           refreshSizeState(newContent); // flush throttle so the guard reflects the latest text
           if (saveBtn.disabled) return; // over the 1 MiB document limit
-          // Any content difference is a save — INCLUDING emptying the note (the
-          // Clear action), which archives the old content to history and keeps the
-          // note as an empty, recoverable entry rather than discarding the edit.
+          // Any content difference is a save — including manually emptying a note,
+          // which archives the old content to history and keeps the note as an empty,
+          // recoverable entry rather than discarding the edit.
           const changed = newContent !== entry.content;
           const restoring = makeCurrentOnSave && newContent === initialValue && newContent !== entry.content;
           if (changed || restoring) {
