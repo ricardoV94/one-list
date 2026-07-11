@@ -5,3 +5,9 @@ node_modules/
 # (.gitkeep is kept so the folder persists in a fresh clone.)
 mocks/*
 !mocks/.gitkeep
+
+# The test suites ARE committed (tests/**); only their deps are not.
+# tests/** is excluded from `firebase deploy` in firebase.json — never shipped.
+tests/node_modules/
+tests/package-lock.json
+tests/package.json

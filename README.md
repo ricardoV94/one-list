@@ -9,6 +9,7 @@ Built as a single-page PWA with Firebase — no build step, no dependencies beyo
 - **Append-only flow** — new entries go to the top, older ones sink naturally
 - **Bump** — resurface any entry to the top without duplicating it
 - **Inline editing** — edit in place with version history; browse, restore, or delete past versions
+- **Loss-proof history** — every editing session archives its result as an immutable version, so a note overwritten by an out-of-sync device is always recoverable; the note is flagged with a rose edge on every device until the overwritten text is rescued or deleted. See [history-robustness-spec.md](history-robustness-spec.md)
 - **Sharing** — toggle entries as shared; collaborators can view and edit shared entries
 - **Search & filter** — full-text search and view mode cycling (all / shared / unshared)
 - **Markdown** — entries render as Markdown with links, code blocks, lists, etc.; toolbar buttons for bullet lists and checkboxes
@@ -37,10 +38,25 @@ firebase deploy
 ## Project structure
 
 ```
-index.html        # The entire app (markup, styles, logic)
-sw.js             # Service worker for offline caching
-manifest.json     # PWA manifest
-firestore.rules   # Firestore security rules
-firebase.json     # Firebase hosting and deploy config
-stamp-deploy.sh   # Predeploy script that stamps build timestamp
+index.html                    # The entire app (markup, styles, logic)
+sw.js                         # Service worker for offline caching
+manifest.json                 # PWA manifest
+firestore.rules               # Firestore security rules
+firebase.json                 # Firebase hosting and deploy config
+stamp-deploy.sh               # Predeploy script that stamps build timestamp
+history-robustness-spec.md    # How version history survives sync races
+tests/                        # Test suites (committed, never deployed) — ./tests/run.sh
+```
+
+## Data model
+
+A note is one document in `entries/{id}`: `content` (the current text, last-write-wins),
+an `images` map (pasted images stored once, referenced from the text as `img:<id>`), and
+sharing fields. Its past versions are immutable documents in the `entries/{id}/history`
+subcollection — see the spec for the lineage fields and why they're shaped that way.
+
+Changing history behaviour means touching `firestore.rules` too, so deploy both:
+
+```bash
+firebase deploy --only hosting,firestore:rules
 ```

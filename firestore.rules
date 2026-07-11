@@ -36,6 +36,61 @@ service cloud.firestore {
         && request.resource.data.shared == resource.data.shared;
 
       allow delete: if isAllowed() && isOwner();
+
+      // Version history: one immutable doc per committed editing session.
+      // Anyone who can reach the parent note can read and add versions (a collaborator
+      // editing a shared note must be able to archive their result — that is the whole
+      // recoverability guarantee). Versions are NEVER updated: allowing an update would
+      // let a stale device rewrite an archived version, which is the data loss this
+      // design exists to prevent. Delete IS allowed — clear/delete-version are
+      // user-initiated, and this is not a create-only forever-ledger.
+      // NOTE ON ORDERING: rules evaluate each write against the ALREADY-COMMITTED database
+      // — a get() here cannot see other writes in the same batch. So the parent note must
+      // already exist when a version doc is written (create the note first, in a separate
+      // write), and version docs must be deleted BEFORE the note (delete the note first
+      // and these deletes lose their parent and are denied).
+      match /history/{versionId} {
+        function noteExists() {
+          return exists(/databases/$(database)/documents/entries/$(entryId));
+        }
+        function noteData() {
+          return get(/databases/$(database)/documents/entries/$(entryId)).data;
+        }
+        // Same reach as the parent note: owner, or anyone allowlisted if it's shared.
+        function canReachNote() {
+          return isAllowed() && noteExists()
+            && (noteData().owner == request.auth.token.email || noteData().shared == true);
+        }
+        function ownsNote() {
+          return isAllowed() && noteExists()
+            && noteData().owner == request.auth.token.email;
+        }
+        allow read: if canReachNote();
+
+        // Collaborators MUST be able to archive their own result on a shared note — that
+        // is the recoverability guarantee; without it their overwritten text is lost.
+        // Deliberately NO schema validation here: a `hasOnly([...])` field lock would
+        // start DENYING archive writes the day a field is added to a version doc, and a
+        // denied write is a silently lost version — a far worse failure than a stray field.
+        allow create: if canReachNote();
+
+        // Deletion is OWNER-ONLY, matching the note's own delete rule and the UI (clear /
+        // delete-version are shown only to the owner). Not a trust boundary — it just
+        // keeps the rules from permitting a destructive thing the app never offers.
+        allow delete: if ownsNote();
+
+        // CONTENT is immutable: an update that rewrote it would let a stale device destroy
+        // an archived version, which is precisely the data loss this design prevents.
+        //
+        // `base` is not content — it is structural metadata (which version this one derived
+        // from). It MUST be repairable: deleting a version leaves its children pointing at a
+        // doc that no longer exists, and that hole makes every version above it look orphaned.
+        // So deletion re-parents the children onto the deleted version's own parent.
+        // Owner-only, same as delete, and nothing but `base` may change.
+        allow update: if ownsNote()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['base'])
+          && request.resource.data.content == resource.data.content;
+      }
     }
   }
 }
