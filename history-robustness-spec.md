@@ -1,220 +1,308 @@
-# one_list — history robustness spec (distinct-docs design)
+# one_list — version history
 
-## Problem
+How a note's past versions are stored, why a sync race can never destroy one, and how the
+app tells you when one happened.
 
-Notes sync via Firestore with offline persistence. A note's `content` is written
-whole-string via unconditional `updateDoc` (last-write-wins, no version guard). A
-stale/offline device that reconnects replays its queued write and can **overwrite a
-newer edit from another device**. The `editHistory` safety net does *not* catch the
-clobbered version, so content is lost irrecoverably.
+## The guarantee
 
-Reproduced with the real `applyEntryContent` (node harness): device B adds a line,
-device A (stale, shielded from B's snapshot) overwrites `content`; B's version ends up
-**neither current nor in history**. Root causes:
+> No committed version of a note is ever *accidentally* unrecoverable due to a sync race —
+> until the user chooses to clear history.
 
-1. **Wrong thing archived.** History archives the *pre-edit* baseline
-   (`applyEntryContent` `index.html:1135`; `saveEdit` `4233`), never the committed
-   *result*, so the clobbered device's actual content is never durably stored.
-2. **`arrayUnion` dedup erasure.** Inline entries `{content, editedAt}` collapse when two
-   devices archive the same baseline → the "part but not the whole" symptom.
-3. Plus secondary bugs: mid-edit snapshot blackout (`activeEdits`, `4326`) keeps the
-   editing device stale; history-management writes (bump `3889-3900`, delete `3934`,
-   clear `3943`) rewrite the whole array from a stale snapshot; reorder/checkbox paths
-   write content with no history at all.
+Live `content` is last-write-wins: concurrent edits are **not** merged, and the visible text
+can lose a race. What's guaranteed is that the losing text survives as a version doc, and that
+the user is told.
 
-## The guarantee we want
-
-> No committed version of a note is ever *accidentally* unrecoverable due to a sync race
-> — until the user chooses to clear history.
-
-Live `content` stays last-write-wins (we do **not** merge concurrent edits). The visible
-current text may lose a race; the losing version is always recoverable from history, and
-the user is nudged that it happened (red dot).
-
-## Why this design (and not the alternatives)
-
-- **Reactive rescue** (archive a clobbered version when a client witnesses the overwrite)
-  was rejected: it needs a *witness* online at the moment the stale write lands. In the
-  target scenario (laptop offline, phone closed) there is none. Only the **authoring
-  device archiving its own committed result** guarantees recovery witness-free.
-- **Inline array of results** works but: bloats the note doc toward the 1 MiB limit,
-  orders only by skew-prone client `editedAt` (Firestore forbids `serverTimestamp()`
-  inside an array element), and keeps the delete/clear read-modify-write races.
-- **Distinct linked docs** (this design): each version is its own immutable doc with a
-  real `serverTimestamp`. Authoritative ordering, no doc bloat, deletes/clear become
-  single-doc ops (management races vanish), no dedup fragility, history moves *off* the
-  hot path (lazy-loaded). This is money_app's proven model applied to history — but it is
-  **not** the forever-ledger: deletes are allowed and "current" is still the plain
-  `content` field, not a read-time projection.
-
-## Non-goals
-
-No append-only-forever, no create-only rules, no read-time head resolution for "current",
-no concurrent-edit merging. History stays **bounded and user-clearable**.
-
----
+Note the split, because it governs every trade-off below: **storage carries the guarantee; the
+alert is only a nudge.** Every version is durable whether or not any device notices the fork.
+The alerting layer is heuristic and has been wrong repeatedly; the stored data has not.
 
 ## Data model
 
-**Note doc** `entries/{id}` — unchanged except three small fields:
-```js
-{
-  content,                 // authoritative CURRENT text (LWW), unchanged role
-  images,                  // id → data map, unchanged
-  contentVersion,          // id of the history doc representing current content
-  contentBase,             // the contentVersion this current text was derived from (parent) — for fork detection
-  // …existing: createdAt, sortTime, owner, shared, hiddenFor…
-}
-```
-`editHistory` (the inline array) is **retired for new writes** but still *read* for
-legacy notes during migration.
+**Note doc** `entries/{id}`:
 
-**History subcollection** `entries/{id}/history/{versionId}` — one immutable doc/version:
 ```js
 {
-  content,                 // the committed RESULT content of one editing session
-  createdAt: serverTimestamp(),   // authoritative order (the referee the array lacked)
-  editedAt,                // client ISO, display fallback until serverTimestamp resolves
-  device,                  // deviceId, for attribution/debug
-  base,                    // parent versionId this edit derived from (null for the seed)
+  content,           // authoritative CURRENT text (last-write-wins)
+  images,            // id → data URI; referenced from text as `img:<id>`
+  contentVersion,    // id of the history doc holding this current text
+  contentBase,       // the version that text was derived from (its parent)
+  versionCount,      // increment() — commutative, survives parallel/offline writes
+  editedAt,          // client ISO; the card's "last edited", no history read needed
+  orphanVersions,    // CONFIRMED orphans — see Fork detection
+  resolvedVersions,  // orphans the user has DEALT WITH (arrayUnion)
+  // …createdAt, sortTime, owner, shared, hiddenFor
 }
 ```
-Versions are never updated, only created and (on clear/delete/prune) deleted.
+
+`contentVersion`/`contentBase` are duplicated onto the note doc **on purpose**: they keep fork
+detection and the history-button state on the hot path, so the main list never reads the
+subcollection. `contentBase` is not redundant with the current version doc's `base` — it's the
+copy that costs no read.
+
+`orphanVersions` / `resolvedVersions` live on the note doc, not in `localStorage`, because
+*"this note has text that was overwritten"* is a fact about the **note**, not about what a
+given device happened to witness. Whichever device confirms a fork publishes it; every other
+device then shows the cue from the snapshot alone — no witness, no history read.
+
+**History subcollection** `entries/{id}/history/{versionId}` — one doc per version:
+
+```js
+{
+  content,                      // the committed RESULT of one editing session (immutable)
+  createdAt: serverTimestamp(), // authoritative ordering
+  editedAt,                     // client ISO; display fallback until the server stamp lands
+  device,                       // deviceId, for attribution
+  base,                         // parent versionId (null for a root). REPAIRABLE — see below.
+}
+```
+
+`content` is never rewritten. `base` is structural metadata and *must* be repairable: deleting
+a version leaves its children pointing at a doc that no longer exists.
 
 ## Commit path
 
-One editing session → one version doc. On **session teardown** (block/line editor) or
-**`saveEdit`** (full editor), if `entry.content` changed:
+One editing session → one version doc, holding the session's **result**. This is the
+load-bearing choice: because a device archives *its own committed result*, a stale device that
+replays and clobbers `content` still writes its text as a version doc. Recovery needs no witness
+online at the moment of the clobber — which is exactly the case that has none (laptop asleep,
+phone closed).
 
-```js
-const versionId = <client-generated id>;            // doc(historyRef).id
-const batch = writeBatch(db);                        // batch: queues offline, replays atomically
-batch.set(doc(historyRef, versionId), {
-  content: entry.content, createdAt: serverTimestamp(),
-  editedAt: new Date().toISOString(), device: deviceId,
-  base: session.baseVersionId ?? null,
-});
-batch.update(doc(db,'entries',entry.id), {
-  content: entry.content,
-  contentVersion: versionId,
-  contentBase: session.baseVersionId ?? null,
-});
-await batch.commit();
-```
+`commitVersion()` writes the version doc and the note's fields in one `writeBatch` — not a
+`runTransaction`, because batches queue offline and replay as a unit, so `content` and its
+backing version doc can never split. Transactions need a server round-trip and are unusable
+offline.
 
-- `writeBatch` (not `runTransaction`) — batches work offline and replay as a unit, so the
-  note field and its version doc never split. (Transactions need a server round-trip and
-  are unusable for the offline case; batches are fine.)
-- **Block sessions**: archive once, at teardown, centralized in a new
-  `endBlockSession(entry)` replacing the 7 `blockSessions.delete` sites (1549, 1559, 1654,
-  1772, 1782, 1816, 2030). Fire on `beforeunload`/`visibilitychange:hidden` too so a
-  killed tab still archives.
-- `sessionFor` records `baseVersionId = note.contentVersion at session start` (and
-  `startContent` to detect no-op sessions).
-- **Result, not pre-edit**: the version doc holds the committed content. A stale replay's
-  own result is thus always a version doc → clobber-proof, no witness needed.
-- **Seed the original**: on note **create** (`addDoc`, `~4457`), also create a version doc
-  for the initial content so "restore to original" survives. Legacy notes: their first
-  new commit uses `base:null` and the migration read (below) surfaces their inline
-  originals.
-- Reorder/checkbox paths that change text also archive; pure moves still don't.
+| Path | When |
+|---|---|
+| Note create | Seeds the original as a version, so "restore what I first wrote" always survives |
+| `saveEdit` (full editor) | On save, if the text changed |
+| `endBlockSession` (block/line editors) | Once at session teardown, so a burst of block edits coalesces into ONE version |
+| Restore / edit-from-history | Just another edit — see below |
 
-## Image garbage collection — lazy recompute (no per-commit cross-doc reads)
+Pure moves (reorder, checkbox toggle) change `content` without committing a version.
 
-Images live once in the note doc's `images` map; versions reference them by `img:id`.
-With history in a subcollection the commit writer can't cheaply see every version's refs,
-so **do not GC on commit** — only add newly-pasted images; never drop on a normal save.
+**Restore does NOT base on the version being restored.** It bases on *current*, because that is
+what happened: the user looked at current and chose to replace its text with an older version's.
+Basing on the picked version would leave the version it replaced unreachable from current —
+rescuing one orphan would mint another, and the alert could never clear. The picked version stays
+an orphan in the graph; what changed is that the user *dealt with* it (`resolvedVersions`).
 
-Reclaim lazily, at the two moments history is already loaded in the viewer:
-- **Delete-version / clear**: after removing version docs, recompute the union of `img:`
-  refs across `entry.content` + the *remaining* version docs **+ any remaining legacy
-  inline `editHistory` entries**, and drop any `images[id]` not in that set (owner only).
-  (Legacy entries must be included or clearing could drop an image an old inline version
-  still needs.)
-- **Restore/bump** does no GC — all images stay, so a restored legacy version's images
-  resolve.
-- Optional: same recompute opportunistically when the owner opens a note's history.
+**Local state must advance with the commit.** `commitVersion` updates the in-memory note object
+as well as Firestore. A card in an open editing session is shielded from snapshot re-renders, so
+nothing else refreshes it — and the *next* session on that card reads `contentVersion` from it to
+pick its base. Leave it stale and the second edit commits against the version before last,
+genuinely orphaning the first: a note forking against itself, on one device.
 
-Tradeoff: an image removed from current text but referenced by no version lingers until
-the next clear/delete recompute (mild note-doc bloat) — but a version's image is **never**
-wrongly deleted. Safe-over-tight, which matches "less critical".
+### Odd-looking write shapes (all forced by the rules)
 
-## Clearable (no automatic cap)
+Rules evaluate each write against the **already-committed** database — a `get()` cannot see other
+writes in the same batch. Three consequences that look like mistakes and are not:
 
-- **No soft cap / auto-prune.** History is out of the note doc, so there is no 1 MiB
-  pressure that would justify silently deleting the user's old versions. Automatic
-  deletion is itself a form of the data loss we're preventing — so we don't do it.
-- **Clear history** (user-initiated, the only deletion): delete all versions in the
-  subcollection (queued `deleteDoc`s / a batch), then image recompute and clear
-  `contentVersion`/`contentBase` lineage as needed.
-- If a note ever accumulates a very large number of versions, limit at **display time**
-  (page / load most-recent-N in the viewer) — never by deleting docs.
+- **Create is two sequential writes, not one batch.** The history rule `get()`s the parent note.
+  Inside a batch that also creates the note, that parent doesn't exist yet, the rule denies, and
+  the whole batch is rejected — the note silently vanishes.
+- **Those two writes are issued without `await` between them.** Offline, a `setDoc` promise does
+  not resolve until the write reaches the server, so awaiting the note would leave the seed never
+  *enqueued* — a tab closed before reconnect loses it permanently, leaving a hole at the root of
+  the lineage. Issuing both queues them locally, in order, immediately.
+- **Deleting a note deletes its versions first.** Firestore does not cascade, and once the note is
+  gone the parent-note check makes those version docs undeletable forever.
 
-## Fork detection → red dot
+Block sessions flush on `beforeunload` / `visibilitychange:hidden`. **Best-effort**: a hard-killed
+tab can outrun the batch reaching Firestore's offline queue, losing that session's version. Nothing
+already committed is at risk — only the in-flight session.
 
-- On each content-changing snapshot, compare incoming `contentBase` against the
-  `contentVersion` this client last held for that note. If a new current arrived whose
-  `base` is **not** the version we considered current → a stale-based (out-of-order)
-  write landed → mark the note.
-- No history load needed — both fields are on the note doc (hot path).
-- Store the alert in `localStorage` (`oneListHistoryAlerts`: set of note ids), per device;
-  seed silently on a fresh device so pre-existing forks don't all light at once (mirrors
-  money_app `checkForkAlerts`, `money_app/index.html:1609-1649`).
-- **UI**: small dot badge on the note's history button when flagged; reuse an existing
-  accent/alert color + badge style — no new red. Clear on opening that note's history.
+## Fork detection
 
-## History viewer
+An **orphan** is a version that is not an ancestor of `contentVersion` — text some edit discarded
+from current. That is the whole definition; everything below is machinery for finding orphans
+cheaply and *honestly*.
 
-- **Lazy-load**: query `entries/{id}/history` ordered by `createdAt` only when the user
-  opens the viewer (or attach an `onSnapshot` scoped to the open card). Main list never
-  loads history → hot path unchanged.
-- **Versions list** = the ordered version docs; current = the doc whose id ===
-  `contentVersion` (default selection). No separate append of `entry.content` (it already
-  equals its version doc). Bump = write a new version whose content is the chosen old one
-  (becomes current); delete-version = `deleteDoc`; clear = delete all. All lose the stale
-  whole-array rewrite → the three management races are gone by construction.
-- **Legacy/migration read**: also read the note's inline `editHistory` (pre-edit
-  snapshots) and merge into the displayed list, time-ordered with the new docs. A small
-  normalizer maps both to one display shape; legacy entries get a synthesized id and
-  `base:null` (never a false fork alert). Both are "past versions" for display/restore.
+### The walk is three-valued
 
-## Rules (`firestore.rules`)
+`orphanVersionIds` returns `{ status, orphans }`:
 
-Add the history subcollection: `read`, `create`, `delete` for whoever can access the
-parent note (owner/shared/allowlist); **no `update`** (versions immutable). Deletes are
-allowed on purpose (clear/prune) — this is not the create-only ledger.
+| status | meaning |
+|---|---|
+| `clean` | lineage fully walkable, nothing orphaned |
+| `orphans` | lineage fully walkable, and these versions are orphaned |
+| `unknown` | the lineage could **not** be established |
 
-## Mid-edit blackout (secondary, optional)
+`unknown` arises when the current version isn't among the loaded docs (our own commit can outrun
+its own doc into the cache), or when a `base` points at a version that isn't there (a hole).
 
-When a remote snapshot changes a note with an active session: if the user hasn't modified
-the session yet, adopt the remote content and rebase (`startContent`/`baseVersionId`); if
-they have, keep their copy but set the fork flag. Reduces how often a clobber happens
-online. Best-effort; the version docs already guarantee recoverability.
+**`unknown` and `clean` both carry an empty orphan set.** A caller that looks only at the set will
+read "cannot determine" as "verified clean" — and since the orphan set is now note-global truth,
+publishing that would **erase a confirmed orphan for every device**. Losing the alert is worse than
+showing a spurious one: the alert is the only thing telling the user their text was overwritten.
+So no caller may publish on `unknown`.
 
-## Rollout / verification (needs a manual pass — not headless-verifiable)
+### Chain repair
 
-1. Node harness: extend the existing race test to the batch commit + version docs; assert
-   B's result survives A's stale clobber as a version doc. (Logic only.)
-2. **Two-device manual**: edit same note on two tabs, one offline; confirm current is LWW,
-   the overwritten version appears in history, red dot lights, clears on open.
-3. **Image manual**: paste image, edit, restore an older image-bearing version → image
-   still resolves; clear history → unreferenced images reclaimed, referenced kept.
-4. Confirm delete-version removes one, clear empties, legacy notes still show old inline
-   versions.
-5. Deploy: `firebase deploy --only hosting`.
+A hole makes everything upstream unreachable from current, so the walk returns `unknown` and
+detection for that note stops working *forever*. On `unknown`, the owner re-parents each dangling
+node onto the newest surviving version older than it (by `createdAt`), or to `null`, then re-verifies
+once the repair lands. This is why the rules permit a `base`-only update: repairing structure loses no
+text.
 
-## File touch-points
+Repair needs real `createdAt` values and **refuses to run without them** — guessing an order would
+invent a lineage rather than restore one. (Every code path that feeds the walk must therefore carry
+`ms`, not rely on the array happening to arrive in query order.)
 
-| Area | Location | Change |
-|---|---|---|
-| deviceId + version id/entry helpers | new, near `index.html:1067` | stable deviceId; `makeVersion`/batch commit helper |
-| sessionFor | `1176-1180` | store `startContent`, `baseVersionId = note.contentVersion` |
-| applyEntryContent | `1133-1158` | content(+images) write only; drop inline archive |
-| endBlockSession | new; replace 7 `blockSessions.delete` sites | batch: note content/version + version doc |
-| saveEdit | `4221-4253` | batch commit result as a version doc |
-| create | `~4457` | seed initial version doc |
-| viewer | `3790-3948` | lazy-load subcollection; versions from docs; bump/delete/clear via docs; merge legacy inline |
-| image GC | commit + viewer delete/clear | remove per-commit GC; lazy recompute on delete/clear/prune |
-| fork/red dot | snapshot listener + history-button render | `contentBase` check + localStorage flag + badge |
-| rules | `firestore.rules` | history subcollection: read/create/delete, no update |
-| migration | viewer read | tolerate + merge legacy inline `editHistory` |
+Only the owner may repair. A collaborator on a note with a hole simply reports `unknown` and waits;
+it does not re-read the server on every snapshot, because verification only re-runs when the note's
+signature (`contentVersion`/`contentBase`/`versionCount`/orphan+resolved lists) actually changes. If
+nothing moved, there is nothing new to learn.
+
+Deleting a version re-parents its children up-front, so the ordinary path never creates a hole.
+Repair exists for the paths that can still produce one — a lost seed, a partially-synced history.
+
+### Suspect, then verify — never alert on an unverified suspicion
+
+**Hot path** (every snapshot, no history read): an incoming `contentBase` that isn't the version we
+held **suspects** a fork. It does not show one.
+
+That distinction reverses an earlier design which biased toward over-alerting on the theory that
+"a false positive costs a click". It doesn't. A red edge you open and find nothing behind teaches
+you to ignore red edges, which costs exactly the thing the feature exists to buy. **A suspicion is
+not evidence.**
+
+**Verification**: one `getDocsFromServer` read + the walk. Deliberately a *server* read — the cache
+can be missing the very version doc that proves or disproves the fork. If it fails (offline), we do
+not guess in either direction: the suspicion is parked in `pendingForkChecks` (**persisted** — `held`
+advances the moment a snapshot lands, so a crash between suspecting and verifying would otherwise
+forget the fork on that device forever) and retried later. One verification in flight per note, or a
+slow older read can overwrite a newer published set.
+
+### `held` is monotonic — the invariant everything rests on
+
+Each device records the version it holds (`oneListNoteVersions`) and, **in order**, every version it
+has ever held (`oneListSeenVersions`). *A version already superseded can never become current again.*
+
+Firestore does not promise snapshot states arrive in write order: a cached or delayed snapshot can
+surface the note as it was *before* our latest commit. (The block editor makes such a state exist at
+all — it writes `content` alone, then commits the version at teardown.) If `held` follows that
+backwards, the walk starts from a superseded version and reports *our own newest version* as
+orphaned — a red edge on a note nothing forked. Every false-positive bug in this feature's history
+was a violation of this invariant.
+
+`seenVersions` is therefore **an ordering, not a buffer**:
+
+- **Never capped.** A cap evicts the oldest entries — the seed first. Once the seed is gone, a stale
+  echo of it is unrecognisable as our own past, `held` regresses onto it, and the false positive
+  returns. ~20 bytes per version; not a cost worth trading the invariant for.
+- **Never re-appended.** Re-appending a known version moves the oldest to the end and inverts the
+  order the guard reads.
+- **Only *strictly backward* moves are blocked.** Blocking every move onto a seen version is a trap:
+  if `held` ends up behind (a stale tab wrote it), the forward move that would heal it is exactly the
+  one we'd refuse — `held` sticks in the past forever.
+- **Anything that sets `held` must mark it seen in the same breath.** Note creation set `held` to the
+  seed without recording it; the first snapshot then had `held === contentVersion` so the recording
+  branch never ran, and the seed stayed invisible to the guard.
+
+Related: while one of our own commits is still settling (`pendingCommits`), that note's snapshots are
+our own in-flight state and are skipped. The authoritative clear is the **commit promise resolving** —
+i.e. the write actually landing. Snapshot-derived clears are fast paths only: inferring "settled" from
+snapshots covers our own succession but not a *remote* commit landing on top of our pending version
+(its version id is one we have never seen), which would wedge the note for the rest of the session.
+
+### Resolution
+
+The alert persists until the orphan is **dealt with**: rescued, edited-and-saved from, or deleted.
+Opening history is *looking*, not resolving.
+
+An orphan stays an orphan in the graph forever (it can never become an ancestor of current), so
+"have you handled it" cannot be read off the lineage — it is recorded in `resolvedVersions`.
+`orphanVersions` (what *is* orphaned) and `resolvedVersions` (what's been *handled*) are kept
+orthogonal on purpose: if a rescue erased the orphan record, the next verification would recompute
+the lineage, find it orphaned again, and re-raise it — red flapping back on for something already
+fixed.
+
+### UI
+
+The card's *left* edge carries sharing/link status; the *right* edge carries edit/history status —
+so a fork cue composes with shared/unlinked rather than competing. A note with unresolved orphans
+gets a rose right edge (`#d4728c`, the same rose as `.unlinked`), declared before `.editing-full` so
+the blue edit cue wins while editing.
+
+**Inside the history viewer the card edge tracks the version on screen**, not the note: rose only on
+an orphan that is still **unresolved**. The note-level cue would otherwise paint every version rose,
+and a resolved orphan would keep wearing a marker that means "go look at this" — the same
+alert-that-means-nothing failure, one level down.
+
+## Images
+
+Images live once in the note doc's `images` map. Commits are **add-only** — a commit writer can't
+cheaply see which images the other version docs reference, so it never drops one. Reclaiming happens
+in the viewer, where history is already loaded:
+
+- **Delete-version / clear**: recompute the union of `img:` refs across `content` + the *remaining*
+  versions (**including** any legacy inline ones, or clearing could drop an image an old inline
+  version still needs) and drop the rest. Owner only.
+- **Restore**: no GC — every image stays, so a restored version's images resolve.
+
+An unreferenced image lingers until the next delete/clear (mild note-doc bloat); a version's image is
+never wrongly deleted. Safe over tight.
+
+## Deletion
+
+**No automatic cap, no auto-prune.** History is out of the note doc, so there's no 1 MiB pressure that
+would justify silently deleting old versions — and automatic deletion is itself the data loss this
+design prevents. A note with very many versions is limited at *display* time, never by deleting docs.
+
+**Clear history is the one place the guarantee is legitimately given up**: orphaned versions live
+*only* in history. It is user-initiated, keeps the version doc backing current text (nulling its `base`
+so it becomes the new root rather than dangling), and when orphans exist the button says so —
+`Delete all history — including N overwritten versions not in the current note` — rather than
+discarding them as a silent side effect.
+
+## Rules
+
+`entries/{id}/history/{versionId}`:
+
+- **read, create** — anyone who can reach the parent note. A collaborator editing a shared note *must*
+  be able to archive their result; without it their overwritten text is unrecoverable, which is the
+  whole guarantee.
+- **delete** — owner only, matching the note's own delete rule and the UI. Not a trust boundary (this
+  app is two people who trust each other); it just stops the rules permitting a destructive thing the
+  app never offers.
+- **update** — `base` only, owner only, with `content` unchanged. Needed for chain repair.
+
+There is deliberately **no schema validation** on create. A `hasOnly([...])` field lock would start
+*denying* archive writes the day a field is added to a version doc, and a denied write is a silently
+lost version — a far worse failure than a stray field.
+
+Because delete is permitted at all, immutability rests on *who* can delete: whoever may delete may
+delete-then-recreate an id. The rules alone do not make a version tamper-proof, and this spec does not
+claim they do.
+
+## Legacy notes
+
+Notes predating this design have an inline `editHistory` array of *pre-edit* snapshots. It is still
+read and merged into the viewer, time-ordered with the version docs, and still restorable; nothing new
+is written to it. Legacy entries get a synthesized id and `base: null`, so they are never treated as
+orphans.
+
+## Known limits
+
+- **Detection is heuristic; storage is not.** A missed alert costs a nudge, never data. Bias every
+  future change accordingly.
+- **A hard-killed tab loses its in-flight session's version** (not anything already committed).
+- **Verification costs a server read per suspicion**, and needs the network. Rare by construction.
+- **Rules have no automated coverage.** Every rules bug so far (batch-create denial, delete-before-
+  parent) was found in production. Closing this needs `@firebase/rules-unit-testing` + the emulator.
+- **`versionCount` can drift** from the true doc count if a version write fails after the note update
+  lands. It only drives the history button's label, never correctness.
+
+## Verification
+
+Suites live in `tests/` (committed, never deployed) — `./tests/run.sh`. See `tests/README.md`.
+
+They drive the real functions and the real page, and several replay the exact console logs from real
+false-positive reports. But they are structurally blind to the three things that caused **every** bug
+in this feature: security rules, snapshot ordering, and the offline write queue. **A green suite is
+necessary, not sufficient.**
+
+Only a real two-device pass covers the target scenario: one device offline, both editing the same note.
+Current goes last-write-wins; the overwritten version appears in history; the rose edge lights on every
+device and stays until that orphan is rescued or deleted.

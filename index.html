@@ -31,7 +31,7 @@
   <script>window.__bootMark = function () {};</script>
   <!--
   <script>
-    window.__BUILD = '2026-07-11 02:29'; // replaced with the deploy timestamp by stamp-deploy.sh
+    window.__BUILD = '2026-07-11 12:54'; // replaced with the deploy timestamp by stamp-deploy.sh
     window.__bootTimeline = [];
     window.__bootMark = function (label) {
       var t = performance.now();
@@ -149,8 +149,19 @@
 
     .header-icons {
       display: flex;
+      align-items: center;
       gap: 4px;
     }
+
+    /* Discrete grey header text: deploy stamp, offline badge. */
+    .header-note {
+      font-size: 0.63rem;
+      font-weight: normal;
+      color: #aaa;
+    }
+
+    /* Match the 8px the deploy stamp keeps from the logo (.header-icons gap is 4px). */
+    #offline-badge { margin-right: 4px; }
 
     .header-icons button {
       padding: 0 10px;
@@ -363,6 +374,8 @@
     .history-viewing .entry-content li.todo-item { padding: 0; }
     .entry-content li.todo-item:not(.dragging) { transition: transform 0.12s; }
     .entry-content li.todo-item input[type="checkbox"] { border-radius: 50%; margin-right: 6px; }
+    /* Same line box as .item-edit, which autosize() snaps to whole lines — so the row
+       keeps its exact height when its text is swapped for the editor. */
     .entry-content li.todo-item .todo-text { flex: 1; min-height: 1.3em; line-height: 1.3; }
     .entry-content li.todo-item.checked .todo-text { color: #aaa; text-decoration: line-through; }
 
@@ -639,6 +652,18 @@
        zone above it) so the first line stays put when entering/leaving full edit. */
     .edit-textarea { margin-top: 8px; }
     /* The composer is a whole-note edit, so it wears the same full-height blue edit cue. */
+    /* A sync race overwrote a version of this note — the losing text is safe in history,
+       and this nudges you to go look. Same rose as .unlinked, on the right (edit/history)
+       edge rather than the left (sharing) edge, so the two statuses can coexist on one
+       card. Declared BEFORE .editing-full so the blue edit cue wins while you're editing.
+       Cleared when you open that note's history. */
+    .entry-card.forked, .entry-card.version-orphan { border-right: 3px solid #d4728c; }
+    /* While browsing history the card-level fork cue would paint EVERY version rose, which
+       is the opposite of useful — the point of the viewer is to find WHICH versions are
+       orphaned. So inside the viewer the edge tracks the version on screen: rose only on an
+       orphan (.version-orphan, set per version), otherwise nothing. */
+    .entry-card.history-open { border-right: 3px solid transparent; }
+    .entry-card.history-open.version-orphan { border-right-color: #d4728c; }
     .entry-card.editing-full, #input-area.open { border-right: 3px solid var(--edit-cue); }
     .edit-textarea.over-limit, .edit-textarea.over-limit:focus,
     #new-entry.over-limit, #new-entry.over-limit:focus {
@@ -805,8 +830,9 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-07-11 02:29</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-07-11 12:54</span></h1>
       <div class="header-icons">
+        <span id="offline-badge" class="header-note" style="display:none">offline</span>
         <button id="sign-out-btn" title="Sign out"></button>
         <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
         <button id="toggle-search" title="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><line x1="22" y1="22" x2="15" y2="15"/></svg></button>
@@ -1196,35 +1222,55 @@
         .replace(/`([^`]+)`/g, '$1');
     }
 
-    // Persist a whole new content string for an entry, snapshotting ONE history
-    // version per editing session (the pre-session content) and garbage-collecting
-    // unreferenced images — the block-editing analog of saveEdit.
+    // Persist a whole new content string for an entry mid-session: content + any newly
+    // pasted images, nothing else. The history version is committed ONCE at session
+    // teardown (endBlockSession) and holds the session's RESULT, so there is nothing to
+    // archive here.
+    //
+    // Images are only ADDED here, never dropped: with history in a subcollection this
+    // writer can't cheaply see which images the other version docs still reference, so
+    // GC moved to the viewer (delete/clear), where history is already loaded. An unused
+    // image lingering is mild bloat; deleting one a version still needs is data loss.
     function applyEntryContent(entry, newContent, session) {
       if (newContent === entry.content) return false;
-      const archived = session.snapped ? null : { content: session.baseline, editedAt: new Date().toISOString() };
-      if (archived) session.snapped = true;
-      const allImages = Object.assign({}, entry.images, pendingImages.get(entry.id));
-      // Retain images referenced by the new content OR any kept history version,
-      // including THIS session's archived baseline (it lives in Firestore history
-      // even after the first commit, so keep its images across later commits).
-      const histForGC = (entry.editHistory || []).slice();
-      if (session.snapped) histForGC.push({ content: session.baseline });
-      const refs = collectImageRefs(newContent, histForGC);
-      const images = {};
-      refs.forEach(id => { if (allImages[id]) images[id] = allImages[id]; });
+      const images = Object.assign({}, entry.images, pendingImages.get(entry.id));
       pendingImages.delete(entry.id);
       const hadImages = entry.images && Object.keys(entry.images).length > 0;
       entry.content = newContent;
       entry.images = images;
-      // Do NOT mutate entry.editHistory locally — leaving it stale lets the Firestore
-      // echo detect the change and rebuild the card, so `versions`/`hasHistory`
-      // refresh and the archived version is retrievable from history.
       const payload = { content: newContent };
-      if (archived) payload.editHistory = arrayUnion(archived);
-      if (refs.size || hadImages) payload.images = images;
+      if (Object.keys(images).length || hadImages) payload.images = images;
       updateDoc(doc(db, 'entries', entry.id), payload).catch(err => console.error('block save failed', err));
       return true;
     }
+
+    // End a block-editing session, committing its RESULT as one version doc if the text
+    // actually changed. Centralized so every teardown path archives — previously each of
+    // the terminal sites just dropped the session on the floor.
+    function endBlockSession(entry) {
+      const session = blockSessions.get(entry.id);
+      blockSessions.delete(entry.id);
+      if (!session) return;
+      // The session's result is `entry.content` — applyEntryContent mutates it SYNCHRONOUSLY.
+      // Do NOT read it back from allEntries: that list is rebuilt from the Firestore
+      // snapshot in a microtask, so at teardown it still holds the pre-session text, the
+      // no-op guard below matches, and the version is silently dropped.
+      const result = entry.content;
+      if (result == null || result === session.startContent) return; // genuinely a no-op session
+      commitVersion(entry.id, result, session.baseVersionId, null, entry);
+    }
+
+    // A tab that goes away mid-session should still archive its result. Best-effort: a
+    // hard kill can outrun the batch reaching Firestore's offline queue, in which case
+    // that session's version is lost (the PREVIOUS version doc still stands, so nothing
+    // already committed is at risk — only the in-flight session).
+    const flushBlockSessions = () => {
+      for (const s of [...blockSessions.values()]) {
+        if (s.entry) endBlockSession(s.entry); else blockSessions.clear();
+      }
+    };
+    window.addEventListener('beforeunload', flushBlockSessions);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushBlockSessions(); });
 
     // Splice a block's [start,end] line range with new source (empty = delete the
     // block, eating one adjacent blank line so no double gap remains).
@@ -1242,28 +1288,34 @@
       applyEntryContent(entry, lines.join('\n'), session);
     }
 
+    // A session records where it STARTED: the text (to detect a no-op session) and the
+    // version that text came from (the parent of the version we'll commit at teardown).
     function sessionFor(entry) {
       let s = blockSessions.get(entry.id);
-      if (!s) { s = { baseline: entry.content, snapped: false }; blockSessions.set(entry.id, s); }
+      if (!s) {
+        // Hold the entry OBJECT: applyEntryContent mutates it in place, so it — not the
+        // snapshot-derived allEntries — is what carries the session's result at teardown.
+        s = { entry, startContent: entry.content, baseVersionId: entry.contentVersion || null };
+        blockSessions.set(entry.id, s);
+      }
       return s;
     }
 
     // ── Drag-to-reorder + arrow navigation (Phase 3) ──
 
-    // Persist a reorder: content + image GC, but NO history version (a pure move,
-    // like a checkbox toggle). Text-changing edits still go through applyEntryContent.
+    // Persist a reorder: content only, NO history version (a pure move, like a checkbox
+    // toggle — the same lines, reordered). Text-changing edits go through
+    // applyEntryContent + endBlockSession. Images are add-only here for the same reason
+    // as applyEntryContent: this writer can't see the other versions' refs.
     function reorderEntryContent(entry, newContent) {
       if (newContent === entry.content) return false;
-      const allImages = Object.assign({}, entry.images, pendingImages.get(entry.id));
-      const refs = collectImageRefs(newContent, entry.editHistory || []);
-      const images = {};
-      refs.forEach(id => { if (allImages[id]) images[id] = allImages[id]; });
+      const images = Object.assign({}, entry.images, pendingImages.get(entry.id));
       pendingImages.delete(entry.id);
       const hadImages = entry.images && Object.keys(entry.images).length > 0;
       entry.content = newContent;
       entry.images = images;
       const payload = { content: newContent };
-      if (refs.size || hadImages) payload.images = images;
+      if (Object.keys(images).length || hadImages) payload.images = images;
       updateDoc(doc(db, 'entries', entry.id), payload).catch(err => console.error('reorder save failed', err));
       return true;
     }
@@ -1468,7 +1520,7 @@
         onDelete: () => {
           const session = sessionFor(entry);
           applyBlockEdit(entry, div.__block, '', session);
-          blockSessions.delete(entry.id);
+          endBlockSession(entry);
           clearHoverHandle();
           card.__toView();
         },
@@ -1520,7 +1572,7 @@
         onDelete: () => {
           const session = sessionFor(entry);
           commitItemLine(entry, li.__lineIdx, null, session);
-          blockSessions.delete(entry.id);
+          endBlockSession(entry);
           clearHoverHandle();
           card.__toView();
         },
@@ -1745,7 +1797,7 @@
         activeBlock = null;
         activeEdits.delete(entry.id);
         if (save) applyBlockEdit(entry, b, expandFromEdit(ta.value, order), session);
-        if (!opts.keepSession) blockSessions.delete(entry.id);
+        if (!opts.keepSession) endBlockSession(entry);
         card.__toView();
       };
       const current = activeBlock;
@@ -1755,7 +1807,7 @@
         onCancel: () => commit(false),
       });
       // Section delete lives on the edit handle now, not the bottom toolbar.
-      const deleteBlock = () => { if (activeBlock === current) { activeBlock = null; activeEdits.delete(entry.id); applyBlockEdit(entry, b, '', session); blockSessions.delete(entry.id); card.__toView(); } };
+      const deleteBlock = () => { if (activeBlock === current) { activeBlock = null; activeEdits.delete(entry.id); applyBlockEdit(entry, b, '', session); endBlockSession(entry); card.__toView(); } };
 
       // Backspace at the very start merges this block into the previous one: its
       // text is appended to the previous block's source (blank separator dropped,
@@ -1850,7 +1902,7 @@
           const v = expandFromEdit(ta.value, ta._imgOrder).trim();
           if (v) applyEntryContent(entry, where === 'top' ? v + '\n\n' + entry.content : entry.content + '\n\n' + v, session);
         }
-        if (!opts.keepSession) blockSessions.delete(entry.id);
+        if (!opts.keepSession) endBlockSession(entry);
         card.__toView();
       };
       const current = activeBlock;
@@ -1968,7 +2020,7 @@
           // Backspace-merge and the trash button remove a row.
           commitItemLine(entry, lineIdx, prefix + v, session);
         }
-        if (!opts.keepSession) blockSessions.delete(entry.id);
+        if (!opts.keepSession) endBlockSession(entry);
         card.__toView();
       };
       const current = activeBlock;
@@ -1978,7 +2030,7 @@
         onCancel: () => commit(false),
       }, [makeFormatButton, makeLinkButton, makeImageButton, makeEmojiButton]);
       // Row delete lives on the edit handle now, not the bottom toolbar.
-      const deleteItem = () => { if (activeBlock === current) { activeBlock = null; activeEdits.delete(entry.id); commitItemLine(entry, lineIdx, null, session); blockSessions.delete(entry.id); card.__toView(); } };
+      const deleteItem = () => { if (activeBlock === current) { activeBlock = null; activeEdits.delete(entry.id); commitItemLine(entry, lineIdx, null, session); endBlockSession(entry); card.__toView(); } };
 
       input._imgKey = entry.id;
       input._imgOrder = order;
@@ -2012,7 +2064,7 @@
             else if (reordered != null) reorderEntryContent(entry, finalContent); // move → none
             // Reordering a row lands in view mode — the row's text can be a duplicate,
             // so re-finding "the row I moved" by text would re-open the wrong one.
-            blockSessions.delete(entry.id); // burst over (view mode) — match the other terminal paths
+            endBlockSession(entry); // burst over (view mode) — match the other terminal paths
             card.__toView();
           },
         });
@@ -2209,6 +2261,12 @@
       const closing = activeBlock;
       const closingEntry = closing.entry;
       const target = computeSwitchTarget(info.target, info.x, info.y);
+      // A checkbox tapped in the SAME note dies with the commit's re-render, so its
+      // click never lands. Remember which row it was and re-toggle it afterwards.
+      const cbEl = info.target.matches?.('input[type="checkbox"]') ? info.target : null;
+      const cbLi = cbEl && cbEl.closest('li');
+      const cb = cbLi && cbLi.__lineIdx != null
+        ? { contentEl: cbLi.closest('.entry-content'), lineIdx: cbLi.__lineIdx, el: cbEl } : null;
       // target's indices were captured against pre-commit content; committing the
       // current editor can add/remove lines ABOVE the target, shifting its index by
       // the net change in total line count. Shift only a target below the closing edit.
@@ -2226,9 +2284,18 @@
         }
         openBlockTarget(target);
       }
+      if (cb && !cb.el.isConnected && cb.contentEl.isConnected) {
+        // Only the same-note case gets here (another note's checkbox survives the
+        // commit and toggles natively). Shift the row index like the target above.
+        const delta = closingEntry.content.split('\n').length - beforeLen;
+        const lineIdx = cb.lineIdx + (delta && closingStart <= cb.lineIdx ? delta : 0);
+        const li = findItemLiByIdx(cb.contentEl, lineIdx);
+        const fresh = li && li.querySelector('input[type="checkbox"]');
+        if (fresh && !fresh.disabled) fresh.click();
+      }
       // End the closed note's history-coalescing session unless we're still in it
       // (a block-to-block hop within the same note keeps one session = one version).
-      if (!activeBlock || activeBlock.entry !== closingEntry) blockSessions.delete(closingEntry.id);
+      if (!activeBlock || activeBlock.entry !== closingEntry) endBlockSession(closingEntry);
     }, true);
 
     function attachCodeCopyButtons(contentEl) {
@@ -3248,7 +3315,8 @@
       from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js';
     import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
              collection, addDoc as _addDoc, updateDoc as _updateDoc, deleteDoc as _deleteDoc, doc, onSnapshot,
-             query, orderBy, where, or, serverTimestamp, arrayUnion, arrayRemove, getDoc }
+             query, orderBy, where, or, serverTimestamp, arrayUnion, arrayRemove, getDoc,
+             writeBatch, getDocs, getDocsFromServer, increment, setDoc as _setDoc }
       from 'https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js';
 
     // ── Firebase config ──
@@ -3339,6 +3407,500 @@
     const addDoc = guardWrite(_addDoc);
     const updateDoc = guardWrite(_updateDoc);
     const deleteDoc = guardWrite(_deleteDoc);
+    const setDoc = guardWrite(_setDoc);
+    const commitBatch = guardWrite((b) => b.commit());
+
+    // ── History as distinct version docs ──
+    // Every editing session commits ONE immutable doc to entries/{id}/history holding the
+    // session's RESULT (not its pre-edit baseline). That is the whole point: a stale
+    // offline device that replays and clobbers `content` still writes its own result as a
+    // version doc, so the overwritten text is recoverable with NO witness online at the
+    // moment of the clobber. `content` itself stays last-write-wins — we don't merge.
+    //
+    // The note doc carries two hot-path fields so fork detection never needs a
+    // subcollection read: `contentVersion` (id of the version holding the current text)
+    // and `contentBase` (the version that text was derived from).
+    const deviceId = (() => {
+      let d = null;
+      try { d = localStorage.getItem('deviceId'); } catch (e) {}
+      if (!d) {
+        d = Math.random().toString(36).slice(2, 10);
+        try { localStorage.setItem('deviceId', d); } catch (e) {}
+      }
+      return d;
+    })();
+
+    const historyRef = (entryId) => collection(db, 'entries', entryId, 'history');
+    const newVersionId = (entryId) => doc(historyRef(entryId)).id;
+
+    // Commit an editing session's result: version doc + note fields, atomically.
+    // writeBatch (NOT runTransaction) — batches queue offline and replay as a unit, so the
+    // note's content and its backing version doc can never split. Transactions need a
+    // server round-trip and are unusable offline.
+    // `entryObj`, when given, is the LIVE note object a card holds. It must be advanced to
+    // the version we just wrote: a card in an open editing session is shielded from
+    // snapshot re-renders (activeEdits), so nothing else will refresh it — and the NEXT
+    // session on that same card reads `contentVersion` from it to pick its base. Leave it
+    // stale and the second edit commits against the version before last, which genuinely
+    // orphans the first edit. A note forking against itself, on one device.
+    function commitVersion(entryId, content, base, extraNoteFields, entryObj) {
+      const versionId = newVersionId(entryId);
+      console.info('[fork] commitVersion', entryId, 'newVersion=', versionId, 'base=', base || null);
+      const batch = writeBatch(db);
+      batch.set(doc(historyRef(entryId), versionId), {
+        content,
+        createdAt: serverTimestamp(),   // authoritative order (the referee an array lacks)
+        editedAt: new Date().toISOString(), // display fallback until serverTimestamp resolves
+        device: deviceId,
+        base: base || null,
+      });
+      batch.update(doc(db, 'entries', entryId), Object.assign({
+        content,
+        contentVersion: versionId,
+        contentBase: base || null,
+        versionCount: increment(1),     // commutative — survives parallel offline writes
+        editedAt: new Date().toISOString(), // card's "last edited" — hot path, no history read
+      }, extraNoteFields || {}));
+      // Remember our own commit as the version we now hold, or the next snapshot would
+      // read as a fork against our previous version.
+      noteVersions[entryId] = versionId;
+      saveNoteVersions();
+      markSeen(entryId, versionId);
+      pendingCommits.set(entryId, versionId);
+      // Clear on the DEFINITIVE signal: the batch actually landing. Inferring it from
+      // snapshots only covers OUR own succession — if a remote device commits on top of our
+      // pending version, its `contentVersion` is one we've never seen (indexOf === -1) and
+      // the note stays wedged for the rest of the session, with fork detection skipped for
+      // it entirely. The commit promise resolves when the write reaches the server (offline:
+      // on reconnect), which is exactly the condition we mean.
+      // Advance local state to match what we just wrote (see above).
+      const live = allEntries.find(e => e.id === entryId);
+      for (const o of [entryObj, live]) {
+        if (!o) continue;
+        o.content = content;
+        o.contentVersion = versionId;
+        o.contentBase = base || null;
+      }
+      return commitBatch(batch)
+        .then(() => {
+          if (pendingCommits.get(entryId) === versionId) pendingCommits.delete(entryId);
+        })
+        .catch(err => {
+          console.error('version commit failed', err);
+          if (pendingCommits.get(entryId) === versionId) pendingCommits.delete(entryId);
+        });
+    }
+
+    // ── Fork detection (hot path) ──
+    // The alert is a HINT, never the guarantee — recoverability comes from the version docs
+    // alone, whether or not any device notices the fork.
+    //
+    // A snapshot whose `contentBase` is not the version we held SUSPECTS a fork. It does not
+    // show one. The suspicion is verified against the real lineage (a server read + the
+    // ancestor walk) and only a CONFIRMED orphan lights the edge.
+    //
+    // This is a deliberate reversal of an earlier design that biased toward over-alerting on
+    // the theory that "a false positive costs a click". It doesn't: a red edge you open and
+    // find nothing behind teaches you to ignore red edges, which costs exactly the thing the
+    // feature exists to buy. A suspicion is not evidence.
+    //
+    // Two things must be durable in localStorage:
+    //   `noteVersions` — the version this device holds. In memory, a reload resets it and we
+    //                    start under-alerting.
+    //   `seenVersions` — every version we have held, IN ORDER. `held` may only move forward;
+    //                    this list is how a backwards move is recognised. Never capped, never
+    //                    reordered (see markSeen).
+    // Notes with a version commit of OURS still settling. The block editor writes TWICE —
+    // applyEntryContent pushes `content` alone (leaving contentVersion on the PREVIOUS
+    // version), then endBlockSession commits the version doc — so the note genuinely passes
+    // through an intermediate state where content has moved but contentVersion has not.
+    // Firestore can surface that state back to us. It is OUR OWN write in flight, not
+    // another device's edit: while it settles we neither suspect a fork nor move `held`.
+    // Without this, `held` regresses to the older version, and the orphan walk then starts
+    // from the wrong "current" and reports our own newest version as orphaned. That is a
+    // red edge on a note nothing has forked — a solo device forking against itself.
+    const pendingCommits = new Map();   // noteId → the versionId we just wrote
+
+    // Versions we have ALREADY held as current, per note (oldest → newest, capped).
+    //
+    // `held` must be MONOTONIC: a version we have already superseded can never become
+    // current again. Firestore does not promise snapshot states arrive in write order — a
+    // cached or delayed snapshot can surface the note as it was BEFORE our latest commit
+    // (the block editor's content-then-version window makes such a state exist at all). If
+    // we let `held` follow that backwards, the orphan walk starts from a superseded version
+    // and reports our own newest version as orphaned: a red edge on a note nothing forked.
+    //
+    // So: an incoming contentVersion we have seen before, that is not the one we hold, is a
+    // STALE ECHO of our own past — ignore the snapshot entirely rather than regress.
+    let seenVersions = {};
+    try { seenVersions = JSON.parse(localStorage.getItem('oneListSeenVersions') || '{}') || {}; } catch (e) {}
+    const saveSeenVersions = () => { try { localStorage.setItem('oneListSeenVersions', JSON.stringify(seenVersions)); } catch (e) {} };
+    // `seenVersions[note]` is the CHRONOLOGICAL list of versions this device has held. It is
+    // not a convenience buffer: the backwards guard decides "is this incoming version older
+    // than what I hold?" by comparing positions in it. Two invariants follow, and both were
+    // violated by earlier versions of this function:
+    //
+    //   1. NEVER re-append a version already in the list. Only the last element used to be
+    //      checked, so re-seeing an older version pushed it to the END — making the oldest
+    //      version look like the newest and inverting the order the guard reads.
+    //   2. NEVER cap/evict. A cap dropped the OLDEST entries first, i.e. the seed. Once the
+    //      seed is gone, a stale echo of it is no longer recognisable as our own past, so
+    //      `held` regresses onto it, the orphan walk starts from the wrong version, and every
+    //      newer version is reported orphaned — exactly the false positive this guard exists
+    //      to prevent. ~20 bytes per version, pruned when the note is deleted; not a cost
+    //      worth trading the invariant for.
+    function markSeen(noteId, versionId) {
+      if (!versionId) return;
+      const list = seenVersions[noteId] || (seenVersions[noteId] = []);
+      if (list.includes(versionId)) return;   // keep its ORIGINAL position
+      list.push(versionId);
+      saveSeenVersions();
+    }
+
+    let noteVersions = {};   // noteId → the versionId this device last held as current
+    // NOTE: there is no per-device alert store. Whether a note has unresolved orphaned text
+    // is a fact about the NOTE, not about what this device happened to witness — so it lives
+    // on the note doc, in `orphanVersions` (confirmed orphans) minus `resolvedVersions`
+    // (ones the user has dealt with). Whichever device detects the fork writes it, and every
+    // other device then shows the rose edge from the snapshot alone: no witness, no history
+    // read, no waiting for that device to open the viewer.
+    // The old per-device alert flags are dead: drop them so a stale one can't outlive its
+    // note. (Red is now derived from the note doc on every render.)
+    try { localStorage.removeItem('oneListHistoryAlerts'); } catch (e) {}
+    // NOTE: acknowledgements are NOT kept here — they live on the note doc
+    // (`resolvedVersions`). Whether an orphan has been dealt with is a fact about the NOTE,
+    // not about this device: rescue an orphan on the phone and the laptop must stop showing
+    // red for it too. arrayUnion makes it commutative, so concurrent/offline acks merge.
+    try { noteVersions = JSON.parse(localStorage.getItem('oneListNoteVersions') || '{}') || {}; } catch (e) {}
+    const saveNoteVersions = () => { try { localStorage.setItem('oneListNoteVersions', JSON.stringify(noteVersions)); } catch (e) {} };
+
+    // The user dealt with this orphan (rescued it, or edited and saved from it). An orphan
+    // stays an orphan in the lineage forever — it is never an ancestor of current — so the
+    // "have you handled it" bit has to be recorded separately from the graph. It goes on the
+    // note doc so every device agrees; arrayUnion never clobbers a concurrent ack.
+    function ackFork(noteId, versionId) {
+      if (!versionId) return;
+      const e = allEntries.find(x => x.id === noteId);
+      if (e) e.resolvedVersions = (e.resolvedVersions || []).concat(
+        (e.resolvedVersions || []).includes(versionId) ? [] : [versionId]);
+      return updateDoc(doc(db, 'entries', noteId), { resolvedVersions: arrayUnion(versionId) })
+        .catch(err => console.error('ack failed', err));
+    }
+
+    // Called for every snapshot. A device seeing a note for the FIRST time just records the
+    // version it arrived at — it cannot suspect anything, having held nothing to be forked
+    // away from. (It will still show the rose edge if the NOTE DOC already carries an
+    // unresolved orphan: that is a fact about the note, published by whichever device
+    // confirmed it, and needs no witness here.)
+    function checkForkAlerts(entries, fromCache) {
+      let dirtyV = false;
+      const live = new Set();
+      const suspects = [];
+      for (const e of entries) {
+        live.add(e.id);
+        if (!e.contentVersion) continue;              // legacy / never committed under this scheme
+
+        // Our own commit still settling? Ignore this note entirely until the snapshot
+        // catches up to the version we wrote. Anything before that is our own in-flight
+        // state — including the block editor's content-without-version intermediate.
+        // While one of OUR commits is in flight, this note's snapshots are our own
+        // intermediate state (the block editor writes content, then the version) — not
+        // another device's edit. Skip it.
+        //
+        // These are FAST paths only; the authoritative clear is the commit promise resolving
+        // (see commitVersion), so a snapshot we never receive cannot wedge the note.
+        const pending = pendingCommits.get(e.id);
+        if (pending) {
+          const sv = seenVersions[e.id] || [];
+          const iPend = sv.indexOf(pending), iCur = sv.indexOf(e.contentVersion);
+          const ourEcho = e.contentVersion === pending;
+          const movedPast = (iPend !== -1 && iCur > iPend) || e.contentBase === pending;
+          if (ourEcho || movedPast) pendingCommits.delete(e.id);
+          else continue;
+        }
+
+        const held = noteVersions[e.id];
+
+        // `held` must only move FORWARD. `seenVersions` is the ordered list of versions this
+        // device has held, so it tells us which way a move goes: an incoming version that
+        // sits EARLIER in that list than the one we hold is our own past echoing back out of
+        // order (Firestore does not promise snapshots arrive in write order) — ignore it.
+        //
+        // Only a strictly BACKWARD move is blocked. Blocking every move onto a seen version
+        // would be a trap: if `held` ever ends up behind (a stale tab on an old build wrote
+        // it to localStorage, say), the forward move that would heal it is exactly the one
+        // we'd refuse — `held` sticks in the past forever, and every check then reports our
+        // newest version as orphaned. A wedged red edge that no amount of editing clears.
+        // Whatever we hold is by definition seen — guards any future path that sets `held`
+        // without recording it (exactly the bug described at note creation).
+        if (held) markSeen(e.id, held);
+        const seen = seenVersions[e.id] || [];
+        const iHeld = seen.indexOf(held);
+        const iIncoming = seen.indexOf(e.contentVersion);
+        if (held && iHeld !== -1 && iIncoming !== -1 && iIncoming < iHeld) {
+          console.debug('[fork] ignoring stale echo', e.id, held, '<-', e.contentVersion);
+        }
+        if (held && iHeld !== -1 && iIncoming !== -1 && iIncoming < iHeld) {
+          continue;   // strictly backwards — a stale echo
+        }
+
+        // A base that isn't the version we held SUSPECTS a fork. Confirm it against the
+        // real lineage before showing anything — see recheckOrphans.
+        // Skip while our own write is still in flight: that snapshot is our own optimistic
+        // state echoing back, not another device's edit.
+        if (held && !e._pending && held !== e.contentVersion && e.contentBase !== held
+            && !hasUnresolvedOrphans(e)) {
+          suspects.push(e.id);
+        }
+        if (held !== e.contentVersion) {
+          console.info('[fork] held advance', e.id, held, '->', e.contentVersion,
+                       '(base', e.contentBase + ')');
+          noteVersions[e.id] = e.contentVersion;
+          markSeen(e.id, e.contentVersion);
+          dirtyV = true;
+        }
+      }
+      // Prune state for notes that are really gone — but ONLY from a snapshot we can trust to
+      // be complete: a server-backed, non-empty one. An empty snapshot (boot) or a partially
+      // populated cache snapshot would otherwise wipe `held` and `seen` for notes that exist.
+      // That is not cosmetic: losing `seen` blinds the backwards guard, so the next stale echo
+      // regresses `held` and the note reports its own newest version as orphaned.
+      if (entries.length && !fromCache) {
+        for (const id of Object.keys(noteVersions)) if (!live.has(id)) { delete noteVersions[id]; dirtyV = true; }
+        for (const id of Object.keys(seenVersions)) if (!live.has(id)) { delete seenVersions[id]; saveSeenVersions(); }
+        for (const id of [...pendingForkChecks]) if (!live.has(id)) { pendingForkChecks.delete(id); savePendingChecks(); }
+      }
+      if (dirtyV) saveNoteVersions();
+      // Verify off the hot path — one server read per suspicion, which is rare.
+      const byId = new Map(entries.map(e => [e.id, e]));
+      for (const id of suspects) recheckOrphans(id, true, byId.get(id));
+      // Retry anything we couldn't verify earlier (we were offline then).
+      for (const id of [...pendingForkChecks]) if (live.has(id)) recheckOrphans(id, true, byId.get(id));
+    }
+
+    // The alert means "this note still has orphaned text", NOT "you haven't looked yet".
+    // So it is set from the orphan count, and only an action that RESOLVES the orphan
+    // clears it: deleting that version, or bumping/editing-and-saving it (both commit a
+    // new version whose `base` is the orphan, which makes it an ancestor of current and
+    // therefore no longer orphaned). Merely opening history changes nothing.
+    // Publish the confirmed orphan set to the note doc. The owner writes the exact set (so
+    // orphans that were deleted or re-parented away disappear); a collaborator on a shared
+    // note can only add (arrayUnion), since it must not clobber the owner's list.
+    function publishOrphans(id, entry, orphanIds) {
+      const current = (entry.orphanVersions || []).slice().sort();
+      const next = orphanIds.slice().sort();
+      if (current.join(',') === next.join(',')) return;
+      const isOwner = entry.owner === currentUserEmail;
+      const added = next.filter(v => !current.includes(v));
+      let payload = null;
+      if (isOwner) payload = { orphanVersions: next };
+      else if (added.length) payload = { orphanVersions: arrayUnion(...added) };
+      if (!payload) return;
+      entry.orphanVersions = next;   // local echo so the card repaints immediately
+      const cached = cardCache.get(id);
+      if (cached) {
+        cached.entry.orphanVersions = next;
+        cached.card.classList.toggle('forked', hasUnresolvedOrphans(cached.entry));
+      }
+      updateDoc(doc(db, 'entries', id), payload)
+        .catch(err => console.error('publishing orphans failed', err));
+    }
+
+    // Re-derive the alert from the ACTUAL lineage. The hot-path check is only a suspicion:
+    // it fires whenever an incoming base isn't the version we held, which also happens when
+    // nothing was lost (e.g. snapshots coalesced over an offline device's V1←V2←V3). An
+    // alert you can't explain when you open history is worse than no alert, so we confirm
+    // against the orphan walk and only light the edge if a version really is orphaned.
+    //
+    // `suspected` is the fail-loud fallback: a CACHE-only read can be missing the very
+    // version doc that proves the fork, so "no orphans" from cache is not trustworthy —
+    // keep the suspicion rather than silently under-alert. Only a server read may clear it.
+    // Suspicions we could not verify (offline, or an unwalkable lineage). Retried on a later
+    // snapshot — NEVER shown as an alert in the meantime: an unverified suspicion is not
+    // evidence of a fork, and showing red for one produces exactly the spurious alerts that
+    // destroy trust in it.
+    //
+    // DURABLE: `held` advances the moment a snapshot lands, so if the app dies between
+    // "suspected" and "verified", nothing would ever re-suspect that note — the fork would be
+    // silently forgotten on this device forever. Persisted so a reload resumes the check.
+    let pendingForkChecks = new Set();
+    try {
+      const raw = JSON.parse(localStorage.getItem('oneListPendingForkChecks') || '[]');
+      if (Array.isArray(raw)) pendingForkChecks = new Set(raw);
+    } catch (e) {}
+    const savePendingChecks = () => {
+      try { localStorage.setItem('oneListPendingForkChecks', JSON.stringify([...pendingForkChecks])); } catch (e) {}
+    };
+
+    // One verification in flight per note. Concurrent rechecks race on publishOrphans and can
+    // flicker the published set (an older read landing after a newer one).
+    const recheckInFlight = new Set();
+
+    // What the note looked like the last time we verified it. A note whose lineage we could
+    // not establish ('unknown' — e.g. a collaborator waiting for the owner to repair a hole)
+    // would otherwise re-read from the SERVER on every single snapshot, forever. Re-verify
+    // only when something about the note actually moved. No timers, no arbitrary backoff:
+    // if nothing changed, there is nothing new to learn.
+    const verifiedAt = new Map();
+    const noteSignature = (e) => [
+      e.contentVersion, e.contentBase, e.versionCount,
+      (e.orphanVersions || []).join('|'), (e.resolvedVersions || []).join('|'),
+    ].join('~');
+
+    // Repair a broken lineage. A `base` may point at a version that no longer exists — a
+    // deleted version whose children weren't re-parented, or a note whose seed never made it
+    // (offline create, tab killed). The hole makes everything upstream unreachable from
+    // current, so the walk reports "unknown" and detection stops working for that note
+    // FOREVER. Re-parent the dangling node onto the newest surviving version older than it
+    // (by createdAt), or make it a root. Owner only; `base` is structural metadata, not
+    // content, and the rules allow exactly this one field to change.
+    function repairChain(id, entry, versions, currentId) {
+      if (entry.owner !== currentUserEmail) return null;   // only the owner may rewrite `base`
+      const byId = new Map(versions.map(v => [v.id, v]));
+      const dated = versions.filter(v => !v.legacy && v.id !== '__current__');
+      if (dated.some(v => !v.ms)) {
+        // Without real timestamps we cannot say which surviving version precedes the hole —
+        // and guessing would re-parent onto the wrong node, inventing a lineage. Do nothing.
+        console.debug('[fork] repair skipped for', id, '- versions lack createdAt');
+        return null;
+      }
+      const ordered = dated.slice().sort((a, b) => a.ms - b.ms);
+      const broken = ordered.filter(v => v.base && !byId.has(v.base));
+      if (!broken.length) return null;
+      const batch = writeBatch(db);
+      let n = 0;
+      for (const v of broken) {
+        const idx = ordered.indexOf(v);
+        const parent = idx > 0 ? ordered[idx - 1].id : null;   // newest surviving predecessor
+        if (parent === v.base) continue;
+        batch.update(doc(historyRef(id), v.id), { base: parent });
+        if (v.id === entry.contentVersion) batch.update(doc(db, 'entries', id), { contentBase: parent });
+        n++;
+      }
+      if (!n) return null;
+      console.warn('[fork] repairing', n, 'broken lineage link(s) on note', id);
+      return commitBatch(batch).catch(err => { console.error('chain repair failed', err); });
+    }
+
+    // `fresh` is the entry straight off the snapshot. allEntries is rebuilt in a microtask,
+    // so during a snapshot callback it still holds the PREVIOUS state — reading
+    // resolvedVersions/contentVersion from it there would use stale data.
+    async function recheckOrphans(id, suspected, fresh, force) {
+      const e = fresh || allEntries.find(x => x.id === id);
+      if (!e) return;
+      if (recheckInFlight.has(id)) return;   // an older read must not overwrite a newer one
+      const sig = noteSignature(e);
+      if (!force && verifiedAt.get(id) === sig) return;   // nothing changed since we last looked
+      recheckInFlight.add(id);
+      try {
+        await recheckOrphansInner(id, suspected, e);
+        verifiedAt.set(id, sig);
+      } finally { recheckInFlight.delete(id); }
+    }
+
+    async function recheckOrphansInner(id, suspected, e) {
+      // Our own just-committed version can beat the snapshot into allEntries, so trust
+      // what we hold over what the (async) snapshot list says.
+      const currentId = noteVersions[id] || e.contentVersion;
+      let snap;
+      try {
+        // Deliberately a SERVER read. The local cache can be missing the very version doc
+        // that proves (or disproves) a fork, and a wrong answer here is user-visible.
+        snap = await getDocsFromServer(query(historyRef(id), orderBy('createdAt')));
+      } catch (err) {
+        // Offline / transient. Do not guess — remember and re-verify later.
+        if (suspected) { pendingForkChecks.add(id); savePendingChecks(); }
+        return;
+      }
+      const versions = [];
+      snap.forEach(d => {
+        const v = d.data();
+        // `ms` must be carried explicitly: repairChain sorts by it. Passing only {id, base}
+        // made every sort key 0, so correctness silently rested on JS's stable sort
+        // preserving the orderBy('createdAt') result — true today, invisibly false after any
+        // refactor that reorders this array.
+        versions.push({ id: d.id, base: v.base || null, ms: v.createdAt?.toMillis?.() || 0 });
+      });
+      if (!versions.length) { publishOrphans(id, e, []); return; }
+      const { status, orphans } = orphanVersionIds(versions, currentId);
+
+      if (status === 'unknown') {
+        // The lineage could not be established. Say nothing: do NOT publish an empty set (that
+        // would erase a confirmed orphan for every device) and do NOT invent one.
+        console.debug('[fork] lineage unknown for', id, '- not publishing');
+        // Park the suspicion REGARDLESS of who asked. A repair-triggered recheck that only
+        // parked when `suspected` would leave the published set stale until some unrelated
+        // suspicion or ack happened to come along.
+        pendingForkChecks.add(id);
+        savePendingChecks();
+        // If we can repair the chain, do — and re-verify once it has actually landed, rather
+        // than waiting for the next snapshot to happen to re-trigger us.
+        const repaired = repairChain(id, e, versions, currentId);
+        if (repaired) {
+          repaired
+            .then(() => recheckOrphans(id, suspected, null, true))
+            .catch(err => console.error('post-repair recheck failed', err));
+        }
+        return;
+      }
+      pendingForkChecks.delete(id);
+      savePendingChecks();
+
+      const allAcks = e.resolvedVersions || [];
+      const acked = allAcks.filter(v => versions.some(x => x.id === v));
+      // Drop acks whose version is gone (deleted / history cleared) so the list can't grow
+      // forever. Owner only — a collaborator can't write the note's fields freely.
+      const dead = allAcks.filter(v => !acked.includes(v));
+      if (dead.length && e.owner === currentUserEmail) {
+        updateDoc(doc(db, 'entries', id), { resolvedVersions: arrayRemove(...dead) })
+          .catch(err => console.error('ack prune failed', err));
+      }
+      const unhandled = [...orphans].filter(v => !acked.includes(v));
+      if (unhandled.length) {
+        console.warn('[fork] note', id, 'orphans', unhandled,
+          '\n  current:', currentId, ' held:', noteVersions[id],
+          '\n  lineage:', versions.map(v => v.id + '<-' + v.base).join(', '));
+      }
+      publishOrphans(id, e, [...orphans]);
+    }
+
+    // The authoritative answer, computed where history is already loaded: any version that
+    // is NOT an ancestor of `contentVersion` is an ORPHAN — a version some edit discarded
+    // from current. Device-independent, needs no witness, correct retroactively forever.
+    // Legacy inline versions are never orphans (they predate the lineage).
+    // Returns { status, orphans }.
+    //
+    //   status 'orphans' — the lineage was fully walkable and these versions are orphaned.
+    //   status 'clean'   — fully walkable, nothing orphaned.
+    //   status 'unknown' — the lineage could NOT be established.
+    //
+    // The distinction is the whole point. An empty orphan set from a walk that could not run
+    // is NOT evidence of a clean note, and callers must never publish it as one: the orphan
+    // set is note-global truth now, so treating 'unknown' as 'clean' would let one device
+    // with a partial cache ERASE a confirmed orphan for everybody. Losing the alert is worse
+    // than showing it — the alert is the only thing telling the user their text was
+    // overwritten.
+    function orphanVersionIds(versions, currentId) {
+      const byId = new Map(versions.map(v => [v.id, v]));
+      // We don't know which version is current, or its doc isn't among the ones we loaded
+      // (our own commit can outrun its own doc into the cache).
+      if (!currentId || !byId.has(currentId)) return { status: 'unknown', orphans: new Set() };
+      const ancestors = new Set();
+      let cur = currentId;
+      while (cur && !ancestors.has(cur)) {
+        if (!byId.has(cur)) {
+          // A `base` pointing at a version that isn't here: the chain has a HOLE (a deleted
+          // version whose children weren't re-parented, a lost seed, a partial sync). We
+          // cannot tell what lies upstream of it.
+          return { status: 'unknown', orphans: new Set() };
+        }
+        ancestors.add(cur);
+        cur = byId.get(cur).base;
+      }
+      const orphans = new Set(
+        versions.filter(v => !v.legacy && !ancestors.has(v.id)).map(v => v.id));
+      return { status: orphans.size ? 'orphans' : 'clean', orphans };
+    }
 
     // ── Theme toggle ──
     function applyTheme() {
@@ -3592,6 +4154,17 @@
     // here would undo them.
     function autosize(ta) {
       ta.style.height = 'auto';
+      // scrollHeight is a WHOLE number of CSS pixels, so it rounds a fractional content
+      // height up (and under browser zoom it can round past the line box entirely). For a
+      // list-row editor that makes the row taller than the rendered row it replaces, and
+      // the list visibly nudges on every click-to-edit — so snap to whole lines instead,
+      // which is exactly what the rendered row's line boxes measure.
+      const lh = parseFloat(getComputedStyle(ta).lineHeight);
+      if (ta.classList.contains('item-edit') && lh > 0) {
+        const lines = Math.max(1, Math.round(ta.scrollHeight / lh));
+        ta.style.height = (lines * lh) + 'px';
+        return;
+      }
       ta.style.height = ta.scrollHeight + 'px';
     }
 
@@ -3873,6 +4446,12 @@
     signOutBtn.innerHTML = ICON.signOut;
     confirmButton(signOutBtn, ICON.signOut, () => { signOut(auth); });
 
+    const offlineBadge = document.getElementById('offline-badge');
+    const syncOfflineBadge = () => { offlineBadge.style.display = navigator.onLine ? 'none' : ''; };
+    window.addEventListener('online', syncOfflineBadge);
+    window.addEventListener('offline', syncOfflineBadge);
+    syncOfflineBadge();
+
     toggleSearchBtn.addEventListener('click', () => {
       const opened = searchArea.classList.toggle('open');
       toggleSearchBtn.classList.toggle('active', opened);
@@ -4012,6 +4591,7 @@
 
       unsubEntries = onSnapshot(entriesQuery, { includeMetadataChanges: true }, (snapshot) => {
         snapshotEntries = snapshot.docs.map(d => ({ id: d.id, ...d.data(), _pending: d.metadata.hasPendingWrites }));
+        checkForkAlerts(snapshotEntries, snapshot.metadata.fromCache);
         mergeAndRender();
         notesLoaded = true; // listener is live — writes now reflect via latency compensation
         // Refresh the localStorage mirror only on real doc changes (includeMetadataChanges
@@ -4024,13 +4604,20 @@
       }, onErr);
     }
 
+    // Notes whose delete is in flight: hidden from the list before the write lands.
+    // Cleared in mergeAndRender once the snapshot stops listing them (i.e. the delete
+    // is confirmed), or by removeEntry if the write failed.
+    const deletingIds = new Set();
+
     let renderQueued = false;
     function mergeAndRender() {
       if (renderQueued) return;
       renderQueued = true;
       queueMicrotask(() => {
         renderQueued = false;
-        allEntries = [...snapshotEntries].sort((a, b) => {
+        const live = new Set(snapshotEntries.map(e => e.id));
+        for (const id of deletingIds) if (!live.has(id)) deletingIds.delete(id);
+        allEntries = [...snapshotEntries].filter(e => !deletingIds.has(e.id)).sort((a, b) => {
           // A pending write with no resolved sortTime is a just-bumped/created note;
           // float it to the top instead of letting null sort it to the bottom (which
           // caused the bump-to-bottom-then-snap-to-top jump).
@@ -4067,8 +4654,20 @@
     // unsharing clears the alert and re-sharing restores it (hiddenFor is never cleared).
     const isRejectedMine = (e) => e.owner === currentUserEmail && e.shared &&
       Array.isArray(e.hiddenFor) && e.hiddenFor.length > 0;
+    // The left edge carries sharing/link status; the right edge carries edit/history
+    // status — so a fork alert (rose, right) composes with shared/unlinked (left) instead
+    // of competing with it.
+    // Unresolved orphans = confirmed orphans the user hasn't dealt with. Pure function of
+    // the note doc, so every device agrees without having witnessed anything.
+    const hasUnresolvedOrphans = (e) => {
+      const orphans = e.orphanVersions || [];
+      if (!orphans.length) return false;
+      const resolved = e.resolvedVersions || [];
+      return orphans.some(v => !resolved.includes(v));
+    };
     const cardClassFor = (e) => 'entry-card' +
-      ((isSetAside(e) || isRejectedMine(e)) ? ' unlinked' : (e.shared ? ' shared' : ''));
+      ((isSetAside(e) || isRejectedMine(e)) ? ' unlinked' : (e.shared ? ' shared' : '')) +
+      (hasUnresolvedOrphans(e) ? ' forked' : '');
 
     function buildCard(initialEntry) {
       let entry = initialEntry;
@@ -4084,11 +4683,15 @@
 
       const dateEl = document.createElement('div');
       dateEl.className = 'entry-date';
-      // History state
-      const history = entry.editHistory || [];
-      const hasHistory = history.length > 0;
-      // Last edit time: last history entry's editedAt, or createdAt if never edited
-      const lastEditedAt = hasHistory ? history[history.length - 1].editedAt : null;
+      // History state. Versions live in the entries/{id}/history subcollection and are
+      // LAZY-loaded when the viewer opens — the main list never reads them, so the hot
+      // path is unchanged no matter how much history a note accumulates.
+      // `versionCount` (on the note doc) tells us whether there's anything to show
+      // without a read; legacy notes fall back to their inline editHistory array.
+      const legacyHistory = entry.editHistory || [];
+      const hasHistory = (entry.versionCount || 0) > 1 || legacyHistory.length > 0;
+      const lastEditedAt = entry.editedAt ||
+        (legacyHistory.length ? legacyHistory[legacyHistory.length - 1].editedAt : null);
       let ts = lastEditedAt ? new Date(lastEditedAt) : (entry.createdAt?.toDate?.() || new Date());
       const dateText = document.createElement('span');
       dateText.textContent = relativeTime(ts);
@@ -4102,20 +4705,93 @@
       }
       dateEl.appendChild(dateText);
       let historyOpen = false;
-      // Build versions with correct "created at" dates:
-      // version 0 was created at entry.createdAt, version N was created at history[N-1].editedAt
-      let versions;
-      if (hasHistory) {
+      // Display shape for a version, from either source:
+      //   { id, content, date, base, legacy, orphan }
+      // Filled in by loadVersions() when the viewer opens; until then just the current
+      // text, so nothing downstream has to special-case an empty list.
+      let versions = [{ id: entry.contentVersion || '__current__', content: entry.content, date: lastEditedAt }];
+      // Total shown on the history button BEFORE the subcollection is read: version docs
+      // + legacy inline versions, +1 for current when no version doc backs it.
+      const versionTotal = (entry.versionCount || 0) + legacyHistory.length + (entry.contentVersion ? 0 : 1);
+      let versionIdx = 0;
+      let currentIdx = 0;   // NOT necessarily the last: a stale clobber can leave an orphan
+                            // version with a NEWER createdAt sitting after current.
+      let orphanCount = 0;  // versions no longer reachable from current (viewer bookkeeping)
+      let orphanStatus = 'unknown';
+
+      // Read the subcollection and merge in any legacy inline versions. Legacy entries are
+      // pre-edit snapshots, so version 0 was created at the note's createdAt and version N
+      // at the previous entry's editedAt — the old off-by-one, preserved for old notes.
+      let versionsTrusted = false;   // did this load come from the SERVER?
+      async function loadVersions() {
+        const docs = [];
+        versionsTrusted = false;
+        try {
+          // Prefer the server: a cache-only read can be MISSING version docs, and the viewer
+          // publishes the orphan set note-globally. Publishing from a partial cache would
+          // erase confirmed orphans for every device, or brand healthy versions as orphans.
+          const snap = await getDocsFromServer(query(historyRef(entry.id), orderBy('createdAt')));
+          versionsTrusted = true;
+          snap.forEach(d => {
+            const v = d.data();
+            docs.push({
+              id: d.id, content: v.content,
+              date: v.createdAt?.toDate?.()?.toISOString() || v.editedAt || null,
+              ms: v.createdAt?.toMillis?.() || 0,
+              base: v.base || null,
+            });
+          });
+        } catch (err) {
+          // Offline: fall back to the cache for DISPLAY only. versionsTrusted stays false, so
+          // nothing is published from it.
+          try {
+            const snap = await getDocs(query(historyRef(entry.id), orderBy('createdAt')));
+            snap.forEach(d => {
+              const v = d.data();
+              docs.push({
+                id: d.id, content: v.content,
+                date: v.createdAt?.toDate?.()?.toISOString() || v.editedAt || null,
+                ms: v.createdAt?.toMillis?.() || 0,
+                base: v.base || null,
+              });
+            });
+          } catch (e2) { console.error('history load failed', e2); }
+        }
+
         const createdIso = entry.createdAt?.toDate?.()?.toISOString() || null;
-        versions = [
-          { content: history[0].content, date: createdIso },
-          ...history.slice(1).map((h, i) => ({ content: h.content, date: history[i].editedAt })),
-          { content: entry.content, date: history[history.length - 1].editedAt }
-        ];
-      } else {
-        versions = [{ content: entry.content, date: null }];
+        const legacy = legacyHistory.map((h, i) => ({
+          id: 'legacy:' + i,
+          content: h.content,
+          date: i === 0 ? createdIso : legacyHistory[i - 1].editedAt,
+          base: null,
+          legacy: true,   // predates the lineage — never counts as an orphan
+        }));
+
+        versions = legacy.concat(docs);
+        // A legacy note (or one whose history was cleared) has current text backed by no
+        // version doc — append it so the viewer can always show and act on current.
+        const found = versions.findIndex(v => v.id === entry.contentVersion);
+        if (found === -1) {
+          versions.push({ id: '__current__', content: entry.content, date: lastEditedAt });
+          currentIdx = versions.length - 1;
+        } else {
+          currentIdx = found;
+        }
+        const { status, orphans } = orphanVersionIds(versions, versions[currentIdx].id);
+        orphanStatus = status;
+        // An orphan the user has already dealt with (rescued / edited from / and so
+        // acknowledged) is still an orphan in the LINEAGE — it can never become an ancestor
+        // of current. But it is not outstanding work, so it must not wear the rose marker:
+        // that marker means "go look at this", and pointing it at something already handled
+        // is exactly the kind of alert-that-means-nothing this feature keeps tripping over.
+        const resolved = entry.resolvedVersions || [];
+        versions.forEach(v => {
+          v.orphan = orphans.has(v.id) && !resolved.includes(v.id);  // unresolved → rose
+          v.resolvedOrphan = orphans.has(v.id) && resolved.includes(v.id);
+        });
+        orphanCount = versions.filter(v => v.orphan).length;
+        versionIdx = currentIdx;
       }
-      let versionIdx = versions.length - 1;
 
       const contentEl = document.createElement('div');
       contentEl.className = 'entry-content';
@@ -4154,15 +4830,37 @@
         historyOpen = false;
         histNav.style.display = 'none';
         actions.style.display = 'flex';
-        versionIdx = versions.length - 1;
-        card.classList.remove('history-viewing');
+        versionIdx = currentIdx;
+        card.classList.remove('history-viewing', 'version-orphan', 'history-open');
         renderBlocks(contentEl, entry);
         dateText.textContent = relativeTime(ts);
       };
 
+      // Images referenced by current text + every version that will REMAIN. This is the
+      // only place images are reclaimed: the commit path can't see other versions' refs,
+      // but here history is already loaded. Legacy inline versions are included too —
+      // leaving them out could drop an image an old inline version still needs.
+      const liveImageRefs = (remaining) => {
+        const refs = collectImageRefs(entry.content, remaining);
+        for (const h of legacyHistory) collectImageRefs(h && h.content, null).forEach(id => refs.add(id));
+        return refs;
+      };
+      const keepImages = (refs) => {
+        if (entry.owner !== currentUserEmail) return null;   // only the owner rewrites the map
+        const images = {};
+        refs.forEach(id => { if (entry.images && entry.images[id]) images[id] = entry.images[id]; });
+        const had = Object.keys(entry.images || {}).length;
+        if (had === Object.keys(images).length) return null;  // nothing to reclaim
+        return images;
+      };
+      const gcImages = (remaining) => keepImages(liveImageRefs(remaining));
+      // Clear also wipes the legacy inline array, so those refs must NOT be retained here
+      // (unlike gcImages, which keeps them because those versions survive).
+      const gcImagesAfterClear = (kept) => keepImages(collectImageRefs(entry.content, kept));
+
       function buildHistoryActions() {
         histActions.innerHTML = '';
-        const isCurrent = versionIdx === versions.length - 1;
+        const isCurrent = versionIdx === currentIdx;
         const entryIsOwn = entry.owner === currentUserEmail;
 
         if (!isCurrent) {
@@ -4171,19 +4869,21 @@
           rescueVerBtn.innerHTML = ICON.bump;
           rescueVerBtn.title = 'Bump';
           rescueVerBtn.addEventListener('click', async () => {
-            const rescuedContent = versions[versionIdx].content;
-            const newHistory = history.map((h, i) => i === versionIdx
-              ? { content: entry.content, editedAt: new Date().toISOString() }
-              : h
-            );
-            // Simple swap: promote this version to current WITHOUT floating to top.
-            // Close history so the user lands back in view mode; from there a regular
-            // Bump can float the note to the top if they also want that.
+            const picked = versions[versionIdx];
+            // Restoring is just another edit applied on top of CURRENT — the user saw
+            // current and chose to replace its text with this older version's. So `base` is
+            // current, not the picked version.
+            //
+            // Do NOT base on the picked version: that would leave the version we just
+            // replaced unreachable from current, i.e. rescuing one orphan would mint
+            // another and the alert could never clear. The picked orphan stays an orphan in
+            // the graph forever (it is never an ancestor); what changes is that the user has
+            // now DEALT with it — which is an acknowledgement, not a lineage fact.
+            // No image GC — every image stays, so a restored version's images resolve.
+            if (picked.orphan) ackFork(entry.id, picked.id);
             closeHistory();
-            await updateDoc(doc(db, 'entries', entry.id), {
-              content: rescuedContent,
-              editHistory: newHistory
-            });
+            await commitVersion(entry.id, picked.content, entry.contentVersion || null, null, entry);
+            await recheckOrphans(entry.id, false);
           }, { once: true });
           histActions.appendChild(rescueVerBtn);
         }
@@ -4206,27 +4906,82 @@
           historyOpen = false; // we're in edit mode now, not history view
           pendingImages.delete(entry.id);
           activeEdits.set(entry.id, { value: versions[versionIdx].content, card });
-          buildEditMode(versions[versionIdx].content, !isCurrent, true);
+          const picked = versions[versionIdx];
+          // Editing FROM an orphan and saving counts as dealing with it (4th arg).
+          buildEditMode(picked.content, !isCurrent, true, picked.orphan ? picked.id : null);
         }, { once: true });
         histActions.appendChild(editVerBtn);
 
         histDeleteSlot.innerHTML = '';
         if (entryIsOwn) {
           if (!isCurrent) {
+            // Delete ONE version: a single deleteDoc, not a whole-array rewrite from a
+            // possibly-stale snapshot. Then reclaim any image no version needs any more.
             const delVerBtn = document.createElement('button');
             delVerBtn.innerHTML = ICON.trash;
             delVerBtn.title = 'Delete version';
             confirmButton(delVerBtn, ICON.trash, async () => {
-              const newHistory = history.filter((_, i) => i !== versionIdx);
-              await updateDoc(doc(db, 'entries', entry.id), { editHistory: newHistory });
+              const picked = versions[versionIdx];
+              const remaining = versions.filter((_, i) => i !== versionIdx);
+              const images = gcImages(remaining);
+              const batch = writeBatch(db);
+              const noteFields = {};
+              if (!picked.legacy && picked.id !== '__current__') {
+                batch.delete(doc(historyRef(entry.id), picked.id));
+                noteFields.versionCount = increment(-1);
+                // RE-PARENT the deleted version's children onto its own parent. Without this
+                // the chain gets a hole: every version above the deleted one stops being an
+                // ancestor of current and is reported as orphaned. `base` is structural
+                // metadata, not content — repairing it loses no text, and the rules allow a
+                // base-only update for exactly this.
+                for (const child of versions) {
+                  if (child.legacy || child.id === '__current__') continue;
+                  if (child.base === picked.id) {
+                    batch.update(doc(historyRef(entry.id), child.id), { base: picked.base || null });
+                  }
+                }
+                // Current's own pointer, if it hung off the deleted version.
+                if (entry.contentBase === picked.id) noteFields.contentBase = picked.base || null;
+              }
+              if (picked.legacy) noteFields.editHistory = legacyHistory.filter((_, i) => i !== versionIdx);
+              if (images) noteFields.images = images;
+              if (Object.keys(noteFields).length) batch.update(doc(db, 'entries', entry.id), noteFields);
+              await commitBatch(batch);
+              await recheckOrphans(entry.id, false);   // deleting the orphan resolves the alert
             });
             histDeleteSlot.appendChild(delVerBtn);
           } else {
+            // Clear history. This is the ONE place the recoverability guarantee is
+            // legitimately given up: orphaned versions (text another device's edit
+            // discarded from current) live ONLY here. So say so when there are any —
+            // never delete them as a silent side effect of "tidy up".
             const clearBtn = document.createElement('button');
             clearBtn.innerHTML = ICON.clearHistory;
-            clearBtn.title = 'Delete all history';
+            const orphanCount = versions.filter(v => v.orphan).length;
+            clearBtn.title = orphanCount
+              ? `Delete all history — including ${orphanCount} overwritten version${orphanCount > 1 ? 's' : ''} not in the current note`
+              : 'Delete all history';
             confirmButton(clearBtn, ICON.clearHistory, async () => {
-              await updateDoc(doc(db, 'entries', entry.id), { editHistory: [] });
+              // Keep the version doc backing the CURRENT text, so current stays anchored
+              // in the lineage and the next edit has a real parent. Everything else goes.
+              const keep = versions.filter(v => v.id === entry.contentVersion);
+              const images = gcImagesAfterClear(keep);
+              const batch = writeBatch(db);
+              for (const v of versions) {
+                if (v.legacy || v.id === '__current__' || v.id === entry.contentVersion) continue;
+                batch.delete(doc(historyRef(entry.id), v.id));
+              }
+              // The surviving version is now the root: its parent was just deleted, so its
+              // base must be nulled or the chain dangles (see the walk's hole handling).
+              if (entry.contentVersion && keep.length) {
+                batch.update(doc(historyRef(entry.id), entry.contentVersion), { base: null });
+              }
+              const noteFields = { versionCount: keep.length, contentBase: null };
+              if (legacyHistory.length) noteFields.editHistory = [];
+              if (images) noteFields.images = images;
+              batch.update(doc(db, 'entries', entry.id), noteFields);
+              await commitBatch(batch);
+              await recheckOrphans(entry.id, false);   // history cleared → nothing left orphaned
             });
             histDeleteSlot.appendChild(clearBtn);
           }
@@ -4238,31 +4993,47 @@
         // Keep the prev/next bar fixed under the cursor as versions of differing
         // length swap in above it.
         const anchorTop = histNav.getBoundingClientRect().top;
-        const isCurrent = versionIdx === versions.length - 1;
-        contentEl.innerHTML = cleanHtml(versions[versionIdx].content, entry.images);
+        const v = versions[versionIdx];
+        const isCurrent = versionIdx === currentIdx;
+        contentEl.innerHTML = cleanHtml(v.content, entry.images);
         applyTodoMarkup(contentEl);
         attachCodeCopyButtons(contentEl);
         // Read-only history: disable the checkboxes (no click-to-edit here).
         contentEl.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.disabled = true; });
         prevBtn.disabled = versionIdx === 0;
-        nextBtn.disabled = isCurrent;
+        nextBtn.disabled = versionIdx === versions.length - 1;
         label.textContent = `${versionIdx + 1}/${versions.length}`;
-        const vDate = versions[versionIdx].date
-          ? fmtDate(versions[versionIdx].date)
-          : relativeTime(ts);
+        const vDate = v.date ? fmtDate(v.date) : relativeTime(ts);
         dateText.textContent = vDate;
         histDateEl.textContent = vDate;
         card.classList.toggle('history-viewing', !isCurrent);
+        // An orphan: a version some edit discarded from current (the thing this whole
+        // design exists to keep recoverable). Same rose as the card's right edge, so the
+        // edge and the version being viewed read as one signal.
+        card.classList.toggle('version-orphan', !!v.orphan);
         buildHistoryActions();
         const delta = histNav.getBoundingClientRect().top - anchorTop;
         if (delta) window.scrollBy(0, delta);
       };
 
-      const toggleHistory = () => {
+      const toggleHistory = async () => {
         if (historyOpen) { closeHistory(); return; }
         historyOpen = true;
         histNav.style.display = 'flex';
         actions.style.display = 'none';
+        await loadVersions();          // lazy: the main list never pays for this
+        if (!historyOpen) return;      // closed while we were loading
+        // Looking is not resolving: the alert stays until the orphan is actually dealt
+        // with. (It can still clear here if the orphan set turns out empty — e.g. the
+        // hot-path check over-alerted on a coalesced snapshot.)
+        // Publish only what we actually know: a server-backed read AND a walkable lineage.
+        // A cache read or an unknown lineage tells us nothing, and publishing "nothing" would
+        // wipe the note's confirmed orphans for every device.
+        if (versionsTrusted && orphanStatus !== 'unknown') {
+          publishOrphans(entry.id, entry,
+            versions.filter(v => v.orphan || v.resolvedOrphan).map(v => v.id));
+        }
+        card.classList.add('history-open');   // edge now tracks the version on screen
         updateHistoryView();
       };
       prevBtn.addEventListener('click', () => { if (versionIdx > 0) { versionIdx--; updateHistoryView(); } });
@@ -4374,7 +5145,7 @@
         if (hasHistory) {
           const histBtn = document.createElement('button');
           histBtn.innerHTML = ICON.history;
-          histBtn.title = `${versions.length} versions`;
+          histBtn.title = `${versionTotal} versions`;
           histBtn.addEventListener('click', toggleHistory);
           actions.appendChild(histBtn);
         }
@@ -4388,15 +5159,18 @@
           actions.appendChild(deleteBtn);
         }
 
-        versionIdx = versions.length - 1;
-        card.classList.remove('history-viewing');
+        versionIdx = currentIdx;
+        card.classList.remove('history-viewing', 'version-orphan', 'history-open');
         renderBlocks(contentEl, entry);
         dateText.textContent = relativeTime(ts);
       }
       card.__toView = buildViewMode; // block editors call this to restore view mode
 
       // ── Edit mode ──
-      function buildEditMode(initialValue, makeCurrentOnSave, returnToHistory) {
+      // resolvingOrphan: the id of an orphaned version this editor was opened FROM. Saving
+      // marks it acknowledged (the user has dealt with it), which clears the fork edge.
+      // It is NOT used as the commit's `base` — see the Bump handler for why.
+      function buildEditMode(initialValue, makeCurrentOnSave, returnToHistory, resolvingOrphan) {
         const textarea = document.createElement('textarea');
         textarea.className = 'edit-textarea';
         // Show `picture#N` tokens instead of `img:<id>` refs. activeEdits keeps the
@@ -4413,8 +5187,15 @@
         // The expand + byte-count passes are O(content); on a pathologically huge
         // note that's costly on mobile, so throttle them (autosize stays immediate
         // for responsiveness). Save flushes synchronously so the guard is current.
-        let sizeThrottleAt = 0, sizeTrail = null;
+        let sizeThrottleAt = 0, sizeTrail = null, editorClosed = false;
+        // Closing the editor must DISARM the trailing callback. Otherwise a keystroke
+        // inside the throttle window of a save fires commitEditState *after* teardown,
+        // re-adding the note to activeEdits — and renderEntries skips every entry in
+        // activeEdits, so the card would silently stop taking snapshot updates for the
+        // rest of the session (stale text, no history button, no fork cue).
+        const closeEditor = () => { editorClosed = true; clearTimeout(sizeTrail); };
         const commitEditState = () => {
+          if (editorClosed) return;
           sizeThrottleAt = Date.now();
           const real = expandFromEdit(textarea.value, order);
           activeEdits.set(entry.id, { value: real, card });
@@ -4448,15 +5229,15 @@
         // esc-hint shows either the discard prompt (temporary) or the over-limit
         // warning (persistent while over). The discard prompt takes precedence and
         // must not be wiped; when it expires we fall back to the limit warning.
-        // Text + history are short refs now; images hold the bytes (counted ONCE,
-        // even across history). History is fixed while editing, so precompute its
-        // text + referenced-image contribution; each keystroke only re-measures the
-        // small current text and sums cached per-image sizes.
+        // Version TEXT no longer lives in this doc (it's in the history subcollection), so
+        // saving costs the note doc nothing but the text itself. What still shares the
+        // 1 MiB limit is the `images` map — and since commits are add-only now (GC moved
+        // to the viewer), every image currently in the map is still charged even if the
+        // new text drops its reference. Count exactly that: legacy inline versions, the
+        // whole images map, and any pasted image.
         const histTextFixed = (entry.editHistory || []).reduce(
           (a, h) => a + byteLen(h && h.content) + byteLen(h && h.editedAt) + 26, 0);
-        const archivedTextBytes = byteLen(entry.content) + 24 + 26; // version archived on save
-        const histImageIds = collectImageRefs(null, entry.editHistory || []);
-        const archivedImageIds = collectImageRefs(entry.content, null);
+        const retainedImageIds = new Set(Object.keys(entry.images || {}));
         const imgBytesCache = new Map();
         const imgBytesOf = (id) => {
           if (!imgBytesCache.has(id)) {
@@ -4475,13 +5256,11 @@
         });
         const refreshSizeState = (realArg) => {
           const real = realArg !== undefined ? realArg : realValue();
-          const changed = real && real !== entry.content; // saving archives the current version
-          const refs = new Set(collectImageRefs(real, null));
-          histImageIds.forEach(id => refs.add(id));
-          if (changed) archivedImageIds.forEach(id => refs.add(id));
+          const refs = new Set(collectImageRefs(real, null)); // newly pasted this session
+          retainedImageIds.forEach(id => refs.add(id));       // add-only: the map keeps them all
           let imagesBytes = 0;
           refs.forEach(id => { imagesBytes += imgBytesOf(id); });
-          const size = 310 + byteLen(real) + histTextFixed + (changed ? archivedTextBytes : 0) + imagesBytes;
+          const size = 310 + byteLen(real) + histTextFixed + imagesBytes;
           overPct = Math.ceil(size / DOC_LIMIT * 100);
           const over = size > DOC_LIMIT;
           textarea.classList.toggle('over-limit', over);
@@ -4490,6 +5269,7 @@
         };
 
         const cancelEdit = () => {
+          closeEditor();
           activeEdits.delete(entry.id);
           pendingImages.delete(key);
           card.classList.remove('editing', 'editing-full'); // release sticky bar + ridge
@@ -4509,31 +5289,32 @@
           const newContent = realValue();
           refreshSizeState(newContent); // flush throttle so the guard reflects the latest text
           if (saveBtn.disabled) return; // over the 1 MiB document limit
+          closeEditor(); // no trailing commitEditState may resurrect activeEdits
           // Any content difference is a save — including manually emptying a note,
           // which archives the old content to history and keeps the note as an empty,
           // recoverable entry rather than discarding the edit.
           const changed = newContent !== entry.content;
           const restoring = makeCurrentOnSave && newContent === initialValue && newContent !== entry.content;
           if (changed || restoring) {
-            // Build the images map: existing + pasted, garbage-collecting any image
-            // no longer referenced by the new content or any retained history version.
-            const archived = { content: entry.content, editedAt: new Date().toISOString() };
-            const allImages = Object.assign({}, entry.images, pendingImages.get(key));
-            const refs = collectImageRefs(newContent, (entry.editHistory || []).concat([archived]));
-            const images = {};
-            refs.forEach(id => { if (allImages[id]) images[id] = allImages[id]; });
+            // Images: existing + pasted, add-only. No GC here — with history in a
+            // subcollection this writer can't see which images the other versions still
+            // reference; reclaiming happens in the viewer on delete/clear.
+            const images = Object.assign({}, entry.images, pendingImages.get(key));
             pendingImages.delete(key);
             const hadImages = entry.images && Object.keys(entry.images).length > 0;
 
             activeEdits.delete(entry.id);
+            // Base is always what this edit sits on top of: the current version.
+            const base = entry.contentVersion || null;
+            if (resolvingOrphan) ackFork(entry.id, resolvingOrphan);
             entry.content = newContent; // keep local copy in sync so buildViewMode renders it
             entry.images = images;
             textarea.replaceWith(contentEl);
             ts = new Date();
             buildViewMode();
-            const payload = { content: newContent, editHistory: arrayUnion(archived) };
-            if (refs.size || hadImages) payload.images = images; // write only when relevant
-            await updateDoc(doc(db, 'entries', entry.id), payload);
+            const extra = (Object.keys(images).length || hadImages) ? { images } : null;
+            await commitVersion(entry.id, newContent, base, extra, entry);
+            if (hasUnresolvedOrphans(entry)) await recheckOrphans(entry.id, false);
           } else {
             cancelEdit();
           }
@@ -4600,24 +5381,28 @@
             continue;
           }
           const prev = cached.entry;
-          const prevHist = prev.editHistory || [];
-          const curHist = entry.editHistory || [];
-          const lastPrev = prevHist[prevHist.length - 1];
-          const lastCur = curHist[curHist.length - 1];
-          const histChanged = prevHist.length !== curHist.length ||
-            lastPrev?.content !== lastCur?.content ||
-            lastPrev?.editedAt !== lastCur?.editedAt;
+          // A card closes over its history state (hasHistory gates the history button,
+          // legacy versions, lastEditedAt), so a lineage change must REBUILD the card, not
+          // patch it in place. versionCount/contentVersion are the cheap hot-path tells.
+          const histChanged = (prev.versionCount || 0) !== (entry.versionCount || 0) ||
+            prev.contentVersion !== entry.contentVersion ||
+            (prev.editHistory || []).length !== (entry.editHistory || []).length;
           if (histChanged) {
             cardCache.delete(entry.id);
           } else {
-            // Update in-place if content, shared, or my set-aside state changed
+            // Update in-place if content, shared, my set-aside state, or the note's orphan
+            // status changed. The orphan check matters on its own: another device publishing
+            // or resolving an orphan changes NOTHING else on the doc, and without this the
+            // rose edge would not appear (or clear) until something else happened to repaint.
             if (prev.content !== entry.content || prev.shared !== entry.shared ||
-                (prev.hiddenFor || []).join(',') !== (entry.hiddenFor || []).join(',')) {
+                (prev.hiddenFor || []).join(',') !== (entry.hiddenFor || []).join(',') ||
+                hasUnresolvedOrphans(prev) !== hasUnresolvedOrphans(entry)) {
               cached.entry = entry;
               cached.card.className = cardClassFor(entry);
               renderBlocks(cached.contentEl, entry);
               const hist = entry.editHistory || [];
-              const ts = hist.length ? new Date(hist[hist.length - 1].editedAt) : (entry.createdAt?.toDate?.() || new Date());
+              const last = entry.editedAt || (hist.length ? hist[hist.length - 1].editedAt : null);
+              const ts = last ? new Date(last) : (entry.createdAt?.toDate?.() || new Date());
               cached.dateText.textContent = relativeTime(ts);
               cached.buildViewMode(entry);
             }
@@ -4724,15 +5509,57 @@
       const images = {};
       refs.forEach(id => { if (pend[id]) images[id] = pend[id]; });
       closeNewEntry();
+      // Seed the original as a version doc, so "restore to what I first wrote" survives
+      // every later edit.
+      //
+      // These are two SEQUENTIAL writes, deliberately NOT one batch. Rules evaluate every
+      // write in a batch against the already-committed database, and the history rule
+      // get()s the parent note to see who may reach it — inside a batch that also creates
+      // the note, the parent doesn't exist yet, so the rule denies and the whole batch is
+      // rejected. Writing the note first means the parent exists when the version lands.
+      // Offline the two queue in order and replay in order, so this holds there too.
+      // Pre-generating the note id (addDoc mints it server-side) lets the note carry its
+      // own contentVersion on the first write.
+      const noteRef = doc(entriesRef);
+      const versionId = newVersionId(noteRef.id);
       const docData = {
         content,
         createdAt: serverTimestamp(),
         sortTime: serverTimestamp(),
         owner: currentUserEmail,
-        shared: false
+        shared: false,
+        contentVersion: versionId,
+        contentBase: null,
+        versionCount: 1,
       };
       if (refs.size) docData.images = images;
-      await addDoc(entriesRef, docData);
+      noteVersions[noteRef.id] = versionId;
+      saveNoteVersions();
+      // THE SEED MUST BE RECORDED AS SEEN. `held` is set here, but if the version isn't also
+      // put in `seenVersions`, the first snapshot has held === contentVersion, so the branch
+      // that would record it never runs — and the seed stays invisible to the backwards
+      // guard. It then cannot recognise a stale echo of the seed as our own past, `held`
+      // regresses onto it, and the orphan walk starts from the seed and reports the note's
+      // real newest version as orphaned. Anything that sets `held` must mark it seen.
+      markSeen(noteRef.id, versionId);
+      // Do NOT await between these two. Offline, a setDoc promise does not resolve until the
+      // write reaches the server — so awaiting the note would leave the SEED never even
+      // enqueued, and a tab closed before reconnect loses it permanently. That leaves the
+      // note pointing at a version doc that does not exist: a hole in the lineage at its very
+      // root, which makes the orphan walk unresolvable for that note forever.
+      //
+      // Issuing both without awaiting queues them locally, in order, immediately. Firestore
+      // replays the queue in order, so the note still lands before its seed (which the rules
+      // require — the history rule get()s the parent note).
+      const notePromise = setDoc(noteRef, docData);
+      const seedPromise = setDoc(doc(historyRef(noteRef.id), versionId), {
+        content,
+        createdAt: serverTimestamp(),
+        editedAt: new Date().toISOString(),
+        device: deviceId,
+        base: null,
+      });
+      await Promise.all([notePromise, seedPromise]).catch(err => console.error('create failed', err));
     }
 
     async function rescueEntry(id) {
@@ -4740,7 +5567,33 @@
     }
 
     async function removeEntry(id) {
-      await deleteDoc(doc(db, 'entries', id));
+      // The history cleanup below needs a network round-trip before the note doc itself
+      // can go, so hide the card up front. deletingIds is honoured by mergeAndRender and
+      // only cleared once the snapshot itself no longer lists the note — so the card can't
+      // flicker back in between the optimistic hide and the confirmed delete.
+      deletingIds.add(id);
+      mergeAndRender();
+      try {
+        // Firestore does not cascade: the history subcollection would outlive the note.
+        // Delete versions FIRST — the rules check the parent note to decide who may delete a
+        // version, so once the note is gone those deletes are denied and the docs are stranded.
+        try {
+          const snap = await getDocs(historyRef(id));
+          if (snap.size) {
+            const batch = writeBatch(db);
+            snap.forEach(d => batch.delete(doc(historyRef(id), d.id)));
+            await commitBatch(batch);
+          }
+        } catch (e) { console.error('history cleanup failed', e); }
+        delete noteVersions[id];
+        saveNoteVersions();
+        await deleteDoc(doc(db, 'entries', id));
+      } catch (e) {
+        // Delete never landed — put the note back rather than leaving a ghost gap.
+        deletingIds.delete(id);
+        mergeAndRender();
+        throw e;
+      }
     }
 
     // ── Event listeners ──
