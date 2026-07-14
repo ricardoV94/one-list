@@ -47,8 +47,8 @@ service cloud.firestore {
       // NOTE ON ORDERING: rules evaluate each write against the ALREADY-COMMITTED database
       // — a get() here cannot see other writes in the same batch. So the parent note must
       // already exist when a version doc is written (create the note first, in a separate
-      // write), and version docs must be deleted BEFORE the note (delete the note first
-      // and these deletes lose their parent and are denied).
+      // write), and version docs should be deleted BEFORE the note (deleted after, they
+      // lose ownsNote() and fall back to the allowlist-wide orphan-cleanup rule below).
       match /history/{versionId} {
         function noteExists() {
           return exists(/databases/$(database)/documents/entries/$(entryId));
@@ -78,6 +78,14 @@ service cloud.firestore {
         // delete-version are shown only to the owner). Not a trust boundary — it just
         // keeps the rules from permitting a destructive thing the app never offers.
         allow delete: if ownsNote();
+
+        // Orphan cleanup: once the parent note is gone, ownsNote() can never hold again,
+        // which used to strand any version the pre-delete sweep missed (offline delete
+        // over a partial cache, or the SDK's cache lying about the subcollection) as
+        // permanently undeletable garbage. Ownership is unknowable here (the note doc no
+        // longer exists), so any allowlisted user may collect the orphans. Same spirit as
+        // the rule above: not a trust boundary, versions of a deleted note guard nothing.
+        allow delete: if isAllowed() && !noteExists();
 
         // CONTENT is immutable: an update that rewrote it would let a stale device destroy
         // an archived version, which is precisely the data loss this design prevents.
