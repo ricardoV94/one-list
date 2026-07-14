@@ -293,6 +293,17 @@ orphans.
   parent) was found in production. Closing this needs `@firebase/rules-unit-testing` + the emulator.
 - **`versionCount` can drift** from the true doc count if a version write fails after the note update
   lands. It only drives the history button's label, never correctness.
+- **A false SDK tombstone can blind one device's fork guard.** The Firestore client can persist a
+  bogus "document does not exist" for a live doc and report it with `fromCache === false` on every
+  boot (self-sealing via the target's resume token; observed for real in the recipes app, 2026-07).
+  The prune in `checkForkAlerts` trusts that flag, so a tombstoned note's `held`/`seen` seed is
+  wiped; if the note later reappears it is fork-blind for its first re-observation. Alert-layer
+  only, storage untouched, and it needs a tombstone AND a heal AND a race in the same window.
+  Deliberately accepted: a grace-period prune would add more risk to this subsystem than it removes.
+- **Stranded version docs are cleanable, not prevented.** A note deleted against an incomplete
+  history read (offline over a partial cache, or the tombstone class above) leaves version docs
+  behind. Rules allow any allowlisted user to delete versions whose parent note is gone, so that
+  garbage is recoverable instead of permanent; nothing sweeps it automatically.
 
 ## Verification
 
