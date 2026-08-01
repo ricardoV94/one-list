@@ -31,7 +31,7 @@
   <script>window.__bootMark = function () {};</script>
   <!--
   <script>
-    window.__BUILD = '2026-07-11 12:54'; // replaced with the deploy timestamp by stamp-deploy.sh
+    window.__BUILD = '2026-08-01 12:20'; // replaced with the deploy timestamp by stamp-deploy.sh
     window.__bootTimeline = [];
     window.__bootMark = function (label) {
       var t = performance.now();
@@ -136,6 +136,12 @@
          scroll container — `overflow-x: hidden` computes overflow-y to auto, which
          breaks `position: sticky` for the edit toolbar (notably on mobile). */
       overflow-x: clip;
+    }
+    /* Desktop: the 600px column is a phone measure and leaves most of a laptop
+       screen empty. Widen it so tables and code fit without scrolling — prose is
+       still a comfortable measure at this width. */
+    @media (min-width: 760px) {
+      body { max-width: 760px; }
     }
 
     header {
@@ -346,6 +352,26 @@
     .entry-content h6 { font-size: 0.7rem; margin: 0 0 4px 0; color: #777; font-weight: 600; }
     .entry-content a { color: #5e9462; }
     .entry-content img { max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 4px 0; }
+
+    /* ── Tables ──
+       Cells never wrap: a table row stays one visual line so columns read as
+       columns. When that overflows, the .table-wrap scrolls sideways rather than
+       the note growing (body is overflow-x: clip, so an unwrapped table would be
+       cut off and unreachable). Rules are hairlines — enough to track a row across
+       columns, not a spreadsheet grid. */
+    .table-wrap { overflow-x: auto; margin: 0 0 8px 0; scrollbar-width: thin; -webkit-overflow-scrolling: touch; }
+    .entry-content table { border-collapse: collapse; font-size: 0.88em; line-height: 1.35; }
+    .entry-content th, .entry-content td {
+      padding: 4px 10px; text-align: left; vertical-align: top;
+      white-space: nowrap; border-bottom: 1px solid #ededed;
+    }
+    /* Faint column rules, and none on the outer edges — the table reads as a block
+       of aligned text, not a boxed grid. */
+    .entry-content th:not(:last-child), .entry-content td:not(:last-child) { border-right: 1px solid #f0f0f0; }
+    .entry-content th:first-child, .entry-content td:first-child { padding-left: 0; }
+    .entry-content th:last-child, .entry-content td:last-child { padding-right: 0; }
+    .entry-content th { font-weight: 600; color: #555; border-bottom-color: #ddd; }
+    .entry-content tbody tr:last-child th, .entry-content tbody tr:last-child td { border-bottom: none; }
     .entry-content li:has(input[type="checkbox"]) { list-style: none; margin-left: -24px; display: flex; align-items: center; }
     .entry-content li:has(input[type="checkbox"]) input[type="checkbox"] { margin-right: 6px; }
     .entry-content li:has(input[type="checkbox"]) .todo-text { flex: 1; }
@@ -766,6 +792,9 @@
     .dark .code-copy-btn { background: #2a2a2a; border-color: #444; color: #e0e0e0; }
     .dark .code-copy-btn:active { background: #333; }
     .dark .entry-content blockquote { border-color: #555; color: #aaa; }
+    .dark .entry-content th, .dark .entry-content td { border-bottom-color: #3a3a3a; }
+    .dark .entry-content th:not(:last-child), .dark .entry-content td:not(:last-child) { border-right-color: #353535; }
+    .dark .entry-content th { color: #bbb; border-bottom-color: #4a4a4a; }
     .dark .entry-content h3 { color: #bbb; }
     .dark .entry-content h4 { color: #bbb; }
     .dark .entry-content h5 { color: #aaa; }
@@ -830,7 +859,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-07-11 12:54</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-08-01 12:20</span></h1>
       <div class="header-icons">
         <span id="offline-badge" class="header-note" style="display:none">offline</span>
         <button id="sign-out-btn" title="Sign out"></button>
@@ -2298,6 +2327,19 @@
       if (!activeBlock || activeBlock.entry !== closingEntry) endBlockSession(closingEntry);
     }, true);
 
+    // Give every table its own horizontal scroll container: cells don't wrap, so a
+    // wide table has to scroll somewhere — and it can't be the page (body is
+    // overflow-x: clip, which would just cut the far columns off).
+    function wrapTables(contentEl) {
+      contentEl.querySelectorAll('table').forEach(table => {
+        if (table.parentElement && table.parentElement.classList.contains('table-wrap')) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'table-wrap';
+        table.replaceWith(wrap);
+        wrap.appendChild(table);
+      });
+    }
+
     function attachCodeCopyButtons(contentEl) {
       contentEl.querySelectorAll('pre').forEach(pre => {
         const code = pre.querySelector('code');
@@ -2328,6 +2370,7 @@
     function attachCheckboxHandlers(contentEl, entry) {
       applyTodoMarkup(contentEl);
       attachCodeCopyButtons(contentEl);
+      wrapTables(contentEl);
       // Stamp each checkbox with its markdown index (DOM order matches markdown order)
       contentEl.querySelectorAll('input[type="checkbox"]').forEach((cb, i) => {
         cb.dataset.mdIdx = i;
@@ -4998,6 +5041,7 @@
         contentEl.innerHTML = cleanHtml(v.content, entry.images);
         applyTodoMarkup(contentEl);
         attachCodeCopyButtons(contentEl);
+        wrapTables(contentEl);
         // Read-only history: disable the checkboxes (no click-to-edit here).
         contentEl.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.disabled = true; });
         prevBtn.disabled = versionIdx === 0;
