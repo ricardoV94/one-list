@@ -21,6 +21,7 @@ CHROME=$(which chromium) ./tests/run.sh   # or point at any Chromium binary
 | Suite | Drives | Covers |
 |---|---|---|
 | `fork` | the real `checkForkAlerts` / `orphanVersionIds` / `markSeen`, sliced out of `index.html` | the stale-clobber race, every false-positive bug we shipped, the monotonic-`held` invariant, the three-valued walk |
+| `startup` | real page, delayed SDK and stalled access check | share editor opens before network waits, preserves typing, consumes share once, reads boot cache once |
 | `sync` | real page | clean sequential A→B sync raises no alert; coalesced remote chains aren't forks; genuine forks still fire |
 | `solo` | real page | one device, consecutive edits — the lineage must stay one unbroken chain |
 | `block` | real page | block-editor sessions commit exactly one version at teardown (coalesced, not per keystroke) |
@@ -55,3 +56,21 @@ editing the same note — can only be verified by hand.
 When you fix a bug here, **check the test against the pre-fix code** and confirm it fails.
 Several bugs in this feature were masked by tests that passed for the wrong reason, and one
 "fix" was silently never applied because a patch aborted and nobody looked.
+
+## Startup benchmarks
+
+See [startup-investigation.md](startup-investigation.md) for prior fixes, measurements,
+and limitations. These use synthetic notes and never access production data.
+
+```bash
+CHROME=/path/to/chrome node tests/benchmark-startup.mjs
+CHROME=/path/to/chrome node tests/benchmark-network.mjs
+```
+
+The first benchmark downloads the app's pinned public SDK/Markdown scripts to `/tmp`
+once; the network benchmark uses those files. The first compares original and selected
+UI code under CPU/network throttling. The second verifies the actual service-worker
+cache path with a stalled server and fully offline. Both write JSON measurements under
+`tests/`. They are separate from `run.sh`, since benchmarks take longer and have no
+machine-independent speed threshold. Neither substitutes for a trace from the Android
+phone or real Firebase/IndexedDB testing.

@@ -21,8 +21,7 @@
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js">
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.11.0/firebase-auth.js">
   <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore.js">
-  <!-- The app reveals itself once showApp() has rendered notes from the localStorage
-       cache (~700ms), independent of Auth — nothing to show pre-JS. -->
+  <!-- Shared text can open before CDN scripts and Auth; normal boot shows cached notes. -->
   <!-- ── Boot-timeline diagnostics — DISABLED ──
        One-step restore: uncomment the block below (and the version-tap handler in the
        module) to re-measure boot. Overlay shows when localStorage 'bootDebug' is set —
@@ -31,7 +30,7 @@
   <script>window.__bootMark = function () {};</script>
   <!--
   <script>
-    window.__BUILD = '2026-08-01 12:20'; // replaced with the deploy timestamp by stamp-deploy.sh
+    window.__BUILD = '2026-09-07 05:49'; // replaced with the deploy timestamp by stamp-deploy.sh
     window.__bootTimeline = [];
     window.__bootMark = function (label) {
       var t = performance.now();
@@ -215,8 +214,7 @@
     }
 
     #app { display: none; }
-    /* Revealed by showApp() once notes are rendered from the localStorage cache
-       (~700ms), independent of Auth — so no blank-until-Auth wait. */
+    /* The shell can be shown before the main module is ready. */
 
     /* Lightweight bottom snackbar for "queued while still connecting" feedback. */
     .sync-toast {
@@ -859,7 +857,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-08-01 12:20</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-09-07 05:49</span></h1>
       <div class="header-icons">
         <span id="offline-badge" class="header-note" style="display:none">offline</span>
         <button id="sign-out-btn" title="Sign out"></button>
@@ -888,6 +886,48 @@
     <div id="entries-list"></div>
     <div id="status"></div>
   </div>
+
+  <!-- No CDN dependencies: sharing must not wait for SDK download, Auth, or a
+       server read. Keep the URL until the full composer has taken ownership. -->
+  <script>
+    (() => {
+      const editor = document.getElementById('new-entry');
+      const area = document.getElementById('input-area');
+      const toggle = document.getElementById('toggle-new');
+      const params = new URLSearchParams(location.search);
+      const parts = [params.get('title'),
+        (params.get('text') || '').replace(/^"?Share via"?\s*/i, '').trim(),
+        params.get('url')].filter(Boolean);
+      window.__sharedDraft = parts.length > 0;
+      if (parts.length) {
+        editor.value = parts.join('\n\n');
+        area.classList.add('open');
+        toggle.classList.add('active');
+      }
+      toggle.addEventListener('click', () => {
+        const opened = area.classList.toggle('open');
+        toggle.classList.toggle('active', opened);
+        if (opened) editor.focus();
+      });
+      try {
+        const theme = localStorage.getItem('theme');
+        document.documentElement.classList.toggle('dark', theme === 'dark' ||
+          (!theme && matchMedia('(prefers-color-scheme: dark)').matches));
+        if (parts.length && localStorage.getItem('wasSignedIn')) {
+          document.getElementById('auth-section').style.display = 'none';
+          document.getElementById('app').style.display = 'block';
+        }
+      } catch (e) {}
+      // Typing and opening the composer work during loading; other actions need
+      // the module. A visible status explains why Save is temporarily unavailable.
+      document.querySelectorAll('button').forEach(button => {
+        if (button === toggle) return;
+        button.disabled = true;
+        button.dataset.bootDisabled = '';
+      });
+      document.getElementById('status').textContent = 'Loading…';
+    })();
+  </script>
 
   <!-- defer: don't block HTML parsing; deferred scripts still run in document
        order before the module script below, which uses marked/DOMPurify. -->
@@ -4502,12 +4542,6 @@
       else { searchInput.value = ''; currentFilter = ''; updateSearchClear(); renderEntries(); }
     });
 
-    toggleNewBtn.addEventListener('click', () => {
-      const opened = inputArea.classList.toggle('open');
-      toggleNewBtn.classList.toggle('active', opened);
-      if (opened) { newEntry.focus(); }
-    });
-
     // ── Auth ──
     const provider = new GoogleAuthProvider();
 
@@ -4520,11 +4554,27 @@
     // Firestore listener, so it's safe to call before Auth resolves. `email` may be
     // null on the first load after upgrading (before it's persisted) — notes render
     // without it; only the entries query (in startListening) needs the address.
+    let bootNotesHydrated = false;
     function showApp(email) {
       if (email) currentUserEmail = email;
-      hydrateNotesLocal();
       authSection.style.display = 'none';
       appSection.style.display = 'block';
+      if (window.__sharedDraft) {
+        // The early script already populated the field. Preserve edits made while
+        // the SDK loaded, and consume only once (Auth may call showApp again).
+        window.__sharedDraft = false;
+        inputArea.classList.add('open');
+        toggleNewBtn.classList.add('active');
+        newEntry.dispatchEvent(new Event('input'));
+        newEntry.focus();
+        const url = new URL(location.href);
+        for (const key of ['title', 'text', 'url']) url.searchParams.delete(key);
+        history.replaceState(null, '', url.pathname + url.search + url.hash);
+      }
+      if (!bootNotesHydrated) {
+        bootNotesHydrated = true;
+        hydrateNotesLocal();
+      }
     }
     // Full sign-in path: show the app AND attach the live listener (Auth is resolved
     // here, so the listener authenticates cleanly).
@@ -4574,21 +4624,6 @@
             alert('Access denied. Your email is not authorized.');
             return;
           }
-        }
-
-        // ── Handle Web Share Target ──
-        const shareParams = new URLSearchParams(window.location.search);
-        const shareTitle = shareParams.get('title');
-        const shareText = (shareParams.get('text') || '').replace(/^"?Share via"?\s*/i, '').trim() || null;
-        const shareUrl = shareParams.get('url');
-        if (shareTitle || shareText || shareUrl) {
-          const parts = [shareTitle, shareText, shareUrl].filter(Boolean);
-          newEntry.value = parts.join('\n\n');
-          inputArea.classList.add('open');
-          toggleNewBtn.classList.add('active');
-          newEntry.dispatchEvent(new Event('input'));
-          newEntry.focus();
-          history.replaceState(null, '', '/');
         }
       } else {
         currentUserEmail = null;
@@ -4838,7 +4873,8 @@
 
       const contentEl = document.createElement('div');
       contentEl.className = 'entry-content';
-      renderBlocks(contentEl, entry);
+      // View mode renders this once; full-edit mode replaces it with a textarea.
+      // Rendering here builds and discards the same Markdown before either mode.
 
       const actions = document.createElement('div');
       actions.className = 'entry-actions';
@@ -5494,9 +5530,12 @@
         }
       }
 
-      // FLIP animation: record old positions
+      // Appending a boot chunk doesn't move existing cards. Avoid forcing layout
+      // for the entire growing list on every chunk; only measure actual reorders.
       const oldRects = new Map();
-      for (const card of entriesList.children) {
+      const reordered = orderedCards.some((card, i) =>
+        i < entriesList.children.length && entriesList.children[i] !== card);
+      if (reordered) for (const card of entriesList.children) {
         oldRects.set(card, card.getBoundingClientRect());
       }
 
@@ -5727,6 +5766,13 @@
         renderEntries();
       }
     });
+
+    document.querySelectorAll('[data-boot-disabled]').forEach(button => {
+      button.disabled = false;
+      delete button.dataset.bootDisabled;
+    });
+    refreshNewSizeState();
+    statusEl.textContent = '';
 
     // ── Service worker ──
     if ('serviceWorker' in navigator) {
