@@ -8,7 +8,9 @@ import { execFileSync } from 'node:child_process';
 const baseline = execFileSync('git', ['show', 'c121868:index.html'], { encoding: 'utf8' });
 // Normalize to the first provisional proposal so all rejected/isolated variants
 // remain reproducible after the selected implementation is applied.
-let candidate = fs.readFileSync(process.env.BENCH_CANDIDATE || 'index.html', 'utf8')
+let candidate = (process.env.BENCH_CANDIDATE
+  ? fs.readFileSync(process.env.BENCH_CANDIDATE, 'utf8')
+  : execFileSync('git', ['show', 'b1bea70:index.html'], { encoding: 'utf8' }))
   .replace('chunkStart > 40', 'chunkStart > 12')
   .replace("if (parts.length && localStorage.getItem('wasSignedIn')) {", "if (localStorage.getItem('wasSignedIn')) {");
 const contentClass = "      contentEl.className = 'entry-content';";
