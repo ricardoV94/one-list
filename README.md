@@ -17,6 +17,36 @@ Built as a single-page PWA with Firebase — no build step, no dependencies beyo
 - **Dark mode** — follows system preference
 - **PWA** — installable on mobile and desktop
 
+## Message calculator
+
+Use `#{...}` anywhere in note text, including headings, bold text, and list items:
+
+```text
+**Income: #{total = 9.30}k (EUR)**
+- [ ] Amount: #{total * 0.75}k (EUR)
+- [ ] Rate: #{8.00}%
+```
+
+This displays **Income: 9.30k (EUR)**, **Amount: 6.98k (EUR)**, and **Rate: 8.00%**.
+Only the value replaces each bracketed expression; surrounding Markdown is preserved.
+Click to edit the original text; calculated results are not stored in the note.
+
+- `#{name = expression}` defines and displays a quantity; `#{expression}` displays
+  a calculation. Multiple expressions on the same line run left to right.
+- Names start with a letter and contain letters, digits, or underscores. Names are
+  case-sensitive, local to the note, and available after their definition.
+- Use `+`, `-`, `*`, `/`, parentheses, and negative numbers. Put units or suffixes
+  outside the expression: `#{amount}k` uses `k` as ordinary text without scaling.
+- All symbols belong outside `#{...}` and are ordinary text: `#{rate}%`, `€#{price}`.
+  Expressions use plain numbers only; a 10% discount is `price * (1 - 0.10)`.
+- Results use the most decimal places written in their inputs, including earlier
+  quantities they depend on. Integer-only inputs default to two places.
+  `2.00` requests two places. Only display is rounded.
+- Redefining a quantity affects following lines. An invalid definition clears that
+  name so later lines cannot accidentally use an old value.
+- Code blocks and inline code do not run calculations. Errors appear beside the
+  affected expression. Decimal input uses a dot, without thousands separators.
+
 ## Stack
 
 - **Frontend:** Single `index.html` (HTML + CSS + JS, no framework)

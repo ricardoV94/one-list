@@ -24,6 +24,8 @@ CHROME=$(which chromium) ./tests/run.sh   # or point at any Chromium binary
 | `preview` | real page with Firebase imports held | sanitized formatted cache preview, hidden-note filtering, single cache read, safe handover, touch/keyboard feedback for blocked actions, queued edit/save feedback |
 | `background` | real page plus real session functions | repeated background/resume, paragraph/item/new-paragraph saves, history survives stale overwrite, offline checkpoint lineage |
 | `startup` | real page, delayed SDK and stalled access check | share editor opens before network waits, preserves typing, consumes share once, reads boot cache once |
+| `calculator` | the real arithmetic parser and formatter, sliced out of `index.html` | precedence, precision propagation, suffixes, invalid input, bounded parsing |
+| `calculator-ui` | real page | inline expressions in bold text and checkbox rows, old dollar syntax stays literal, source-order evaluation, editing and recalculation, note-local names, code/URL exclusion and error recovery |
 | `sync` | real page | clean sequential A→B sync raises no alert; coalesced remote chains aren't forks; genuine forks still fire |
 | `solo` | real page | one device, consecutive edits — the lineage must stay one unbroken chain |
 | `block` | real page | block-editor sessions commit exactly one version at teardown (coalesced, not per keystroke) |

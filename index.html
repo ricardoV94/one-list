@@ -677,6 +677,8 @@
        loses the zone's ~8px of flow. Re-add it here (NOT on #new-entry, which has no
        zone above it) so the first line stays put when entering/leaving full edit. */
     .edit-textarea { margin-top: 8px; }
+    .calculator-error { color: #a32f36; font-size: 0.9em; }
+    .dark .calculator-error { color: #ff9ca3; }
     /* The composer is a whole-note edit, so it wears the same full-height blue edit cue. */
     /* A sync race overwrote a version of this note — the losing text is safe in history,
        and this nudges you to go look. Same rose as .unlinked, on the right (edit/history)
@@ -1007,10 +1009,118 @@
     function preprocessEmptyItems(md) {
       return md.replace(/^(\s*(?:[-*+]|\d+[.)])[ \t]+)[ \t]*$/gm, '$1​');
     }
-    const cleanHtml = (md, images) => DOMPurify.sanitize(marked.parse(preprocessEmptyItems(preprocessTodo(resolveImageRefs(md, images)))), {
+    // Small arithmetic parser: never execute note text as JavaScript. Values carry
+    // a display precision hint; intermediate results are deliberately not rounded.
+    function calculatorExpression(source, variables) {
+      let rest = source.trim();
+      const tokens = [];
+      while (rest) {
+        const token = rest.match(/^(?:\d+(?:\.\d+)?|\.\d+)|^[A-Za-z][A-Za-z0-9_]*|^[+*/()-]/);
+        if (!token) throw new Error('Invalid expression');
+        tokens.push(token[0]);
+        if (tokens.length > 256) throw new Error('Expression is too long');
+        rest = rest.slice(token[0].length).trimStart();
+      }
+      let pos = 0;
+      const finite = value => {
+        if (!Number.isFinite(value)) throw new Error('Result is too large');
+        return value;
+      };
+      const combine = (a, b, op) => {
+        if (op === '/' && b.value === 0) throw new Error('Cannot divide by zero');
+        const value = op === '+' ? a.value + b.value : op === '-' ? a.value - b.value
+          : op === '*' ? a.value * b.value : a.value / b.value;
+        return { value: finite(value), precision: Math.max(a.precision, b.precision) };
+      };
+      const primary = () => {
+        const token = tokens[pos++];
+        if (token === '+' || token === '-') {
+          const result = primary();
+          return { ...result, value: token === '-' ? -result.value : result.value };
+        }
+        if (token === '(') {
+          const result = sum();
+          if (tokens[pos++] !== ')') throw new Error('Missing closing parenthesis');
+          return result;
+        }
+        if (token && /^[\d.]/.test(token)) {
+          const precision = token.includes('.') ? token.split('.')[1].length : 0;
+          if (precision > 20) throw new Error('Use at most 20 decimal places');
+          return { value: finite(Number(token)), precision };
+        }
+        if (token && /^[A-Za-z]/.test(token)) {
+          if (!variables.has(token)) throw new Error('Unknown quantity: ' + token);
+          return variables.get(token);
+        }
+        throw new Error('Expected a number, quantity, or parenthesis');
+      };
+      const product = () => {
+        let result = primary();
+        while (tokens[pos] === '*' || tokens[pos] === '/') {
+          const op = tokens[pos++]; result = combine(result, primary(), op);
+        }
+        return result;
+      };
+      const sum = () => {
+        let result = product();
+        while (tokens[pos] === '+' || tokens[pos] === '-') {
+          const op = tokens[pos++]; result = combine(result, product(), op);
+        }
+        return result;
+      };
+      const result = sum();
+      if (pos !== tokens.length) throw new Error('Unexpected token: ' + tokens[pos]);
+      return result;
+    }
+
+    function calculatorDisplay(result) {
+      const digits = result.precision || 2;
+      return result.value.toLocaleString('en-US', {
+        minimumFractionDigits: digits, maximumFractionDigits: digits,
+      });
+    }
+
+    function renderCalculator(source, variables) {
+      const escape = text => text.replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+      })[c]);
+      const expression = source.trim();
+      const assignment = expression.match(/^([A-Za-z][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+      const name = assignment?.[1];
+      let text, error = false;
+      try {
+        const result = calculatorExpression(assignment ? assignment[2] : expression, variables);
+        text = calculatorDisplay(result);
+        if (name) variables.set(name, result);
+      } catch (e) {
+        if (name) variables.delete(name);
+        text = e.message; error = true;
+      }
+      return error
+        ? '<span class="calculator-error">' + escape('#{' + source + '}') + ': ' + escape(text) + '</span>'
+        : escape(text);
+    }
+
+    const cleanHtml = (md, images, variables = new Map()) => DOMPurify.sanitize(marked.parse(preprocessEmptyItems(preprocessTodo(resolveImageRefs(md, images))), { calculatorVariables: variables }), {
       ADD_TAGS: ['input'],
       ADD_ATTR: ['type', 'checked', 'disabled', 'target', 'rel'],
     });
+
+    // Recognize the whole expression before Markdown can interpret underscores
+    // or multiplication signs. Code spans, fences, URLs and HTML attributes keep
+    // their own Markdown tokenizers and never execute calculator expressions.
+    marked.use({ extensions: [{
+      name: 'inlineCalculator', level: 'inline',
+      start: src => src.indexOf('#{'),
+      tokenizer(src) {
+        if (this.lexer.state.inRawBlock) return;
+        const match = src.match(/^#\{([^{}\n]*)\}/);
+        if (match) return { type: 'inlineCalculator', raw: match[0], expression: match[1] };
+      },
+      renderer(token) {
+        return renderCalculator(token.expression, this.parser.options.calculatorVariables || new Map());
+      },
+    }] });
 
     // Post-process rendered HTML to set up todo items
     function applyTodoMarkup(contentEl) {
@@ -1102,11 +1212,12 @@
             card.className = 'entry-card' + (rejected ? ' unlinked' : note.shared ? ' shared' : '') + (forked ? ' forked' : '');
             const content = document.createElement('div');
             content.className = 'entry-content';
+            const calculatorVariables = new Map();
             for (const block of splitBlocks(note.content)) {
               const div = document.createElement('div');
               div.className = 'md-block';
               if (isListLine(note.content.split('\n')[block.start])) div.classList.add('list-block');
-              div.innerHTML = cleanHtml(blockText(note.content, block), note.images);
+              div.innerHTML = cleanHtml(blockText(note.content, block), note.images, calculatorVariables);
               content.appendChild(div);
             }
             applyTodoMarkup(content);
@@ -1183,12 +1294,13 @@
         contentEl.addEventListener('mouseleave', clearHoverHandle);
       }
       const lines = entry.content.split('\n'); // split once; blocks slice from here
+      const calculatorVariables = new Map();
       splitBlocks(entry.content).forEach(b => {
         const div = document.createElement('div');
         div.className = 'md-block';
         const src = lines.slice(b.start, b.end + 1).join('\n');
         if (isListLine(lines[b.start])) div.classList.add('list-block');
-        div.innerHTML = cleanHtml(src, entry.images);
+        div.innerHTML = cleanHtml(src, entry.images, calculatorVariables);
         div.__entry = entry;
         div.__block = b;
         contentEl.appendChild(div);
