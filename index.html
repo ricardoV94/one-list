@@ -12,6 +12,7 @@
   <link rel="icon" type="image/png" sizes="48x48" href="/favicon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
   <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="preload" as="image" href="/icon-192.png">
   <!-- Warm up connections + start fetching the Firebase modules in parallel with
        HTML parsing; otherwise they're only discovered after the classic scripts run. -->
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
@@ -861,7 +862,7 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-09-07 06:22</span></h1>
+      <h1 aria-label="One List" style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="" width="32" height="32" style="display:block;background:#7bae7f;border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-09-07 06:22</span></h1>
       <div class="header-icons">
         <span id="offline-badge" class="header-note" style="display:none">offline</span>
         <button id="sign-out-btn" title="Sign out"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
