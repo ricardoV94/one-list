@@ -1,0 +1,190 @@
+{
+  "date": "2026-09-07T03:39:15.054Z",
+  "notes": 200,
+  "results": [
+    {
+      "variant": "baseline",
+      "mode": "stalled-network",
+      "repeat": 0,
+      "firstNote": 108.30000000004657,
+      "allNotes": 496.70000000018626,
+      "requests": [
+        "/",
+        "/icon-192.png",
+        "/favicon.png"
+      ],
+      "errors": []
+    },
+    {
+      "variant": "baseline",
+      "mode": "offline",
+      "repeat": 0,
+      "firstNote": 129.79999999981374,
+      "allNotes": 619.0999999998603,
+      "requests": [],
+      "errors": []
+    },
+    {
+      "variant": "proposed",
+      "mode": "stalled-network",
+      "repeat": 0,
+      "share": 31.199999999953434,
+      "firstNote": 128,
+      "allNotes": 367.80000000004657,
+      "requests": [
+        "/",
+        "/icon-192.png",
+        "/favicon.png"
+      ],
+      "errors": []
+    },
+    {
+      "variant": "proposed",
+      "mode": "offline",
+      "repeat": 0,
+      "share": 31.899999999906868,
+      "firstNote": 121.19999999995343,
+      "allNotes": 374.89999999990687,
+      "requests": [],
+      "errors": []
+    },
+    {
+      "variant": "proposed",
+      "mode": "stalled-network",
+      "repeat": 1,
+      "share": 26.299999999813735,
+      "firstNote": 118.29999999981374,
+      "allNotes": 326.29999999981374,
+      "requests": [
+        "/",
+        "/icon-192.png",
+        "/favicon.png"
+      ],
+      "errors": []
+    },
+    {
+      "variant": "proposed",
+      "mode": "offline",
+      "repeat": 1,
+      "share": 28.9000000001397,
+      "firstNote": 120.30000000004657,
+      "allNotes": 343.9000000001397,
+      "requests": [],
+      "errors": []
+    },
+    {
+      "variant": "baseline",
+      "mode": "stalled-network",
+      "repeat": 1,
+      "firstNote": 109.80000000004657,
+      "allNotes": 462.70000000018626,
+      "requests": [
+        "/",
+        "/icon-192.png",
+        "/favicon.png"
+      ],
+      "errors": []
+    },
+    {
+      "variant": "baseline",
+      "mode": "offline",
+      "repeat": 1,
+      "firstNote": 115.79999999981374,
+      "allNotes": 452,
+      "requests": [],
+      "errors": []
+    },
+    {
+      "variant": "baseline",
+      "mode": "stalled-network",
+      "repeat": 2,
+      "firstNote": 105.0999999998603,
+      "allNotes": 431.80000000004657,
+      "requests": [
+        "/",
+        "/icon-192.png",
+        "/favicon.png"
+      ],
+      "errors": []
+    },
+    {
+      "variant": "baseline",
+      "mode": "offline",
+      "repeat": 2,
+      "firstNote": 109.39999999990687,
+      "allNotes": 440.19999999995343,
+      "requests": [],
+      "errors": []
+    },
+    {
+      "variant": "proposed",
+      "mode": "stalled-network",
+      "repeat": 2,
+      "share": 30.5,
+      "firstNote": 118.60000000009313,
+      "allNotes": 327.10000000009313,
+      "requests": [
+        "/",
+        "/icon-192.png",
+        "/favicon.png"
+      ],
+      "errors": []
+    },
+    {
+      "variant": "proposed",
+      "mode": "offline",
+      "repeat": 2,
+      "share": 37.800000000046566,
+      "firstNote": 156.19999999995343,
+      "allNotes": 495.80000000004657,
+      "requests": [],
+      "errors": []
+    },
+    {
+      "variant": "proposed",
+      "mode": "stalled-network",
+      "repeat": 3,
+      "share": 30,
+      "firstNote": 116.10000000009313,
+      "allNotes": 316.60000000009313,
+      "requests": [
+        "/",
+        "/icon-192.png",
+        "/favicon.png"
+      ],
+      "errors": []
+    },
+    {
+      "variant": "proposed",
+      "mode": "offline",
+      "repeat": 3,
+      "share": 39.9000000001397,
+      "firstNote": 155.20000000018626,
+      "allNotes": 523.6000000000931,
+      "requests": [],
+      "errors": []
+    },
+    {
+      "variant": "baseline",
+      "mode": "stalled-network",
+      "repeat": 3,
+      "firstNote": 109.19999999995343,
+      "allNotes": 440.89999999990687,
+      "requests": [
+        "/",
+        "/icon-192.png",
+        "/favicon.png"
+      ],
+      "errors": []
+    },
+    {
+      "variant": "baseline",
+      "mode": "offline",
+      "repeat": 3,
+      "firstNote": 146.10000000009313,
+      "allNotes": 773.6000000000931,
+      "requests": [],
+      "errors": []
+    }
+  ]
+}
