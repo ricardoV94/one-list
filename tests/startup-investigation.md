@@ -110,3 +110,67 @@ This review found no new cross-device data-loss path, but it is not a proof of z
 the existing fake-SDK suites do not validate real offline write replay, security rules,
 or all Firestore snapshot orderings. No real two-device offline/reconnect exercise was
 performed. Unsaved composer text is still not a durably saved note.
+
+## Follow-up: cached notes before Firebase and background/resume
+
+The earlier improvement still hydrated localStorage inside the Firebase-importing
+module. `recipes_app/index.html` also hydrates before Auth and wraps writes with a
+connecting toast, but its module still depends on SDK delivery. Its write guard was
+reviewed and the same distinction is retained here: unavailable startup actions must
+be retried; once Firebase is initialized, writes can queue before the listener starts.
+
+`benchmark-preview.mjs` compares deployed `609ef3d` with a generated preview proposal
+**before applying it**. It uses the same 200 notes, real SDK/Markdown script bytes,
+fake data operations, mobile Chromium viewport, and 6× CPU throttle described above.
+Four repetitions rotate order; repetition zero is excluded. Raw measurements are in
+`benchmark-preview-results.json`. Medians in milliseconds:
+
+| Condition | First note before | First note with preview | All notes before | All notes with preview |
+|---|---:|---:|---:|---:|
+| Cached transport, 6× CPU | 523 | 323 | 3,489 | 3,613 |
+| Cold slow network, 6× CPU | 5,937 | 4,827 | 8,680 | 8,537 |
+
+The first note appears 38% sooner in the cached-transport test and 19% sooner in the
+cold slow-network test. Full-list results vary in both directions; there is no claimed
+full-list improvement. These are controlled desktop simulations, not measured phone
+or production Firebase timings. The later action-feedback UI and list-gutter alignment
+are not included in these recorded proposal measurements.
+
+The implementation moves shared sanitized Markdown rendering into an inline module
+without Firebase imports and previews at most six cached notes (12 ms budget, at least
+one note). It still needs marked and DOMPurify. It transfers the parsed cache to the
+main module for one read per boot, then replaces the preview with interactive cards.
+The cached snapshot never queues writes by itself. Tapping a preview note, checkbox,
+or unavailable button shows “Still connecting — please try again in a moment.”
+Keyboard Save gives the same feedback and keeps the draft. After initialization,
+the existing write path and queued-sync toast take over, including edits and saves
+before the database listener starts. No early action is automatically replayed.
+
+### Background/resume history regression
+
+Reproduced in Chromium against both `24fac1a` and `609ef3d`: open a paragraph editor,
+type, dispatch hidden/visible lifecycle events, then Save. Content updates, but history
+stays at one seed version; a stale device can subsequently overwrite the only copy of
+that edit. A normal Save without backgrounding creates the expected second version.
+The new regression fails 12 assertions against the unfixed page.
+
+The lifecycle flush previously deleted an open editor's session while leaving its
+textarea active. It now checkpoints already-applied content and retains that same
+session object, advancing its baseline synchronously to the queued checkpoint version.
+The next Save therefore archives its result, repeated lifecycle events do not create
+duplicate checkpoints, and an offline unresolved write promise does not block lineage.
+Closing the editor still ends the session. Current unsaved textarea text is not
+automatically saved; a killed page can still lose it.
+
+`background` passes 26 assertions covering paragraphs, list items, new paragraphs,
+repeated background/resume, a later stale overwrite, and unresolved checkpoint writes.
+`preview` covers early safe rendering and takeover; the five new loading-feedback
+assertions fail before the feedback change and pass afterward. Browser tests use
+synthetic lifecycle events and the fake SDK, not Android process suspension or a real
+two-device offline queue. The image-map risk identified in the review is left unchanged.
+
+The completed follow-up passes all 175 assertions across ten suites. Mobile layout was
+visually checked with synthetic cached notes and the Firebase imports held indefinitely;
+toolbar icons are present in the initial HTML so Save remains recognizable during that
+wait. The original startup/network benchmark inputs are pinned to `609ef3d` (or an
+explicit `BENCH_CANDIDATE` file) so later application edits do not change those proposals.

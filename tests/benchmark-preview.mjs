@@ -1,49 +1,16 @@
-// Reproducible UI benchmark. Real pinned SDKs are downloaded once and evaluated;
-// Firebase operations are faked, so no account or production data is accessed.
+// Isolate displaying the cached first screen before Firebase script evaluation.
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
-
-const baseline = execFileSync('git', ['show', '24fac1a:index.html'], { encoding: 'utf8' });
-// Normalize to the first provisional proposal so all rejected/isolated variants
-// remain reproducible after the selected implementation is applied.
-let candidate = (process.env.BENCH_CANDIDATE
-  ? fs.readFileSync(process.env.BENCH_CANDIDATE, 'utf8')
-  : execFileSync('git', ['show', '609ef3d:index.html'], { encoding: 'utf8' }))
-  .replace('chunkStart > 40', 'chunkStart > 12')
-  .replace("if (parts.length && localStorage.getItem('wasSignedIn')) {", "if (localStorage.getItem('wasSignedIn')) {");
-const contentClass = "      contentEl.className = 'entry-content';";
-if (!candidate.includes(contentClass + '\n      renderBlocks(contentEl, entry);')) {
-  candidate = candidate.replace(contentClass, contentClass + '\n      renderBlocks(contentEl, entry);');
-}
+import { cachedPreviewCandidate } from './cached-preview-proposal.mjs';
+const baseline = execFileSync('git', ['show', '609ef3d:index.html'], { encoding: 'utf8' });
+const variants = { baseline, preview: cachedPreviewCandidate(baseline) };
 const fake = fs.readFileSync('tests/fake-firestore.js', 'utf8')
   .replace("setTimeout(() => cb({ email: 'me@test.dev' }), 0)", "setTimeout(() => cb({ email: 'me@test.dev' }), window.__scenario.authDelay)")
   .replace('export async function getDoc(ref) {', "export async function getDoc(ref) { if (ref.path[0] === 'config') await new Promise(r => setTimeout(r, window.__scenario.accessDelay));")
   .replace('export function onSnapshot(', 'export function unusedOnSnapshot(')
   + '\nexport function onSnapshot() { return () => {}; }';
-const allLayout = `      // FLIP animation: record old positions
-      const oldRects = new Map();
-      for (const card of entriesList.children) {
-        oldRects.set(card, card.getBoundingClientRect());
-      }`;
-const skipLayout = /      \/\/ Appending a boot chunk[\s\S]*?oldRects.set\(card, card.getBoundingClientRect\(\)\);\n      }/;
-let variants = {
-  baseline,
-  'share-and-hydration': candidate.replace('chunkStart > 12', 'chunkStart > 40').replace(skipLayout, allLayout),
-  'skip-layout-40ms': candidate.replace('chunkStart > 12', 'chunkStart > 40'),
-  'skip-layout-12ms': candidate,
-};
-// Additional proposals stay in the harness until measurements justify a change.
-const shareOnlyShell = candidate.replace('chunkStart > 12', 'chunkStart > 40')
-  .replace("if (localStorage.getItem('wasSignedIn')) {", "if (parts.length && localStorage.getItem('wasSignedIn')) {");
-const initialRender = "      contentEl.className = 'entry-content';\n      renderBlocks(contentEl, entry);";
-variants['share-only-shell-40ms'] = shareOnlyShell;
-variants['single-render-40ms'] = shareOnlyShell.replace(initialRender, "      contentEl.className = 'entry-content';");
-variants = Object.fromEntries((process.env.BENCH_VARIANTS || 'baseline,single-render-40ms').split(',').map(name => {
-  if (!variants[name]) throw new Error('Unknown benchmark variant: ' + name);
-  return [name, variants[name]];
-}));
 const cacheDir = '/tmp/one-list-benchmark-vendor';
 fs.mkdirSync(cacheDir, { recursive: true });
 const vendors = new Map();
@@ -108,7 +75,7 @@ try {
   for (const scenario of scenarios) {
     // Rotate variant order each repetition to reduce order/thermal bias. The first
     // repetition warms Chromium and is recorded but excluded from medians.
-    for (let repeat = 0; repeat < Number(process.env.BENCH_RUNS || 6); repeat++) {
+    for (let repeat = 0; repeat < Number(process.env.BENCH_RUNS || 4); repeat++) {
       const names = Object.keys(variants);
       for (const name of names.slice(repeat % names.length).concat(names.slice(0, repeat % names.length))) {
         const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
@@ -133,7 +100,7 @@ try {
             if (app && getComputedStyle(app).display !== 'none') {
               b.shell ??= now;
               if (document.querySelector('.entry-card')) b.firstNote ??= now;
-              if (document.querySelectorAll('.entry-card').length === notes.length) b.allNotes ??= now;
+              if (document.querySelectorAll('#entries-list .entry-card').length === notes.length) b.allNotes ??= now;
               const editor = document.getElementById('new-entry');
               if (editor.value && getComputedStyle(document.getElementById('input-area')).display !== 'none') b.shareEditor ??= now;
             }
@@ -158,5 +125,5 @@ try {
 } finally {
   await browser.close();
   server.close();
-  fs.writeFileSync(process.env.BENCH_OUTPUT || 'tests/benchmark-startup-results.json', JSON.stringify({ date: new Date().toISOString(), baseline: '24fac1a', scenarios, notes: notes.length, notesBytes: JSON.stringify(notes).length, results }, null, 2));
+  fs.writeFileSync(process.env.BENCH_OUTPUT || 'tests/benchmark-preview-results.json', JSON.stringify({ date: new Date().toISOString(), baseline: '609ef3d', scenarios, notes: notes.length, notesBytes: JSON.stringify(notes).length, results }, null, 2));
 }

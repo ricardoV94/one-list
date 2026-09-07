@@ -108,7 +108,11 @@ writes in the same batch. Three consequences that look like mistakes and are not
 - **Deleting a note deletes its versions first.** Firestore does not cascade, and once the note is
   gone the parent-note check makes those version docs undeletable forever.
 
-Block sessions flush on `beforeunload` / `visibilitychange:hidden`. **Best-effort**: a hard-killed
+Block sessions checkpoint already-applied changes on `beforeunload` / `visibilitychange:hidden`.
+An open editor retains its session object; a checkpoint advances that session's baseline to
+its newly queued version, so Save after returning creates the next version and repeated
+lifecycle events do not duplicate it. The current textarea remains unsaved until Save.
+Closing the editor removes the session. **Best-effort**: a hard-killed
 tab can outrun the batch reaching Firestore's offline queue, losing that session's version. Nothing
 already committed is at risk — only the in-flight session.
 

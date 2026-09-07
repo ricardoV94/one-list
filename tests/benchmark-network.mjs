@@ -5,7 +5,9 @@ import fs from 'node:fs';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
 const baseline = execFileSync('git', ['show', '24fac1a:index.html'], { encoding: 'utf8' });
-const proposed = fs.readFileSync('index.html', 'utf8')
+const proposed = (process.env.BENCH_CANDIDATE
+  ? fs.readFileSync(process.env.BENCH_CANDIDATE, 'utf8')
+  : execFileSync('git', ['show', '609ef3d:index.html'], { encoding: 'utf8' }))
   .replace('chunkStart > 12', 'chunkStart > 40')
   .replace("if (localStorage.getItem('wasSignedIn')) {", "if (parts.length && localStorage.getItem('wasSignedIn')) {")
   .replace("      contentEl.className = 'entry-content';\n      renderBlocks(contentEl, entry);", "      contentEl.className = 'entry-content';");

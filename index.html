@@ -30,7 +30,7 @@
   <script>window.__bootMark = function () {};</script>
   <!--
   <script>
-    window.__BUILD = '2026-09-07 05:50'; // replaced with the deploy timestamp by stamp-deploy.sh
+    window.__BUILD = '2026-09-07 06:22'; // replaced with the deploy timestamp by stamp-deploy.sh
     window.__bootTimeline = [];
     window.__bootMark = function (label) {
       var t = performance.now();
@@ -215,8 +215,10 @@
 
     #app { display: none; }
     /* The shell can be shown before the main module is ready. */
+    button[data-boot-disabled] { opacity: 0.4; cursor: wait; }
+    #boot-notes input[type="checkbox"] { pointer-events: none; }
 
-    /* Lightweight bottom snackbar for "queued while still connecting" feedback. */
+    /* Lightweight bottom snackbar for startup and pending-sync feedback. */
     .sync-toast {
       position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
       background: #333; color: #fff; padding: 10px 16px; border-radius: 20px;
@@ -857,11 +859,11 @@
 
   <div id="app">
     <header>
-      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-09-07 05:50</span></h1>
+      <h1 style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="One List" width="32" height="32" style="border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-09-07 06:22</span></h1>
       <div class="header-icons">
         <span id="offline-badge" class="header-note" style="display:none">offline</span>
-        <button id="sign-out-btn" title="Sign out"></button>
-        <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"></button><div id="view-popover" class="view-popover"></div></div>
+        <button id="sign-out-btn" title="Sign out"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+        <div class="view-wrapper" style="position:relative"><button id="toggle-view" title="Filter view"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16a4 4 0 1 1 0-8c2.5 0 4 2 6 4s3.5 4 6 4a4 4 0 0 0 0-8c-2.5 0-4 2-6 4s-3.5 4-6 4z"/></svg><span style="margin-left:4px">All</span></button><div id="view-popover" class="view-popover"></div></div>
         <button id="toggle-search" title="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><line x1="22" y1="22" x2="15" y2="15"/></svg></button>
         <button id="toggle-new" title="New entry"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></button>
       </div>
@@ -870,8 +872,8 @@
     <div id="input-area">
       <textarea id="new-entry" placeholder="What's on your mind?"></textarea>
       <div class="entry-actions" id="new-actions">
-        <button id="append-btn" class="btn-edit btn-save" title="Save"></button>
-        <button id="cancel-new" class="btn-delete" title="Cancel"></button>
+        <button id="append-btn" class="btn-edit btn-save" title="Save"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></button>
+        <button id="cancel-new" class="btn-delete" title="Cancel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         <span id="new-esc-hint" class="esc-hint"></span>
       </div>
     </div>
@@ -891,6 +893,28 @@
        server read. Keep the URL until the full composer has taken ownership. -->
   <script>
     (() => {
+      let syncToastEl = null;
+      window.__showSyncToast = (msg) => {
+        if (syncToastEl) syncToastEl.remove();
+        const el = document.createElement('div');
+        el.className = 'sync-toast';
+        el.setAttribute('role', 'status');
+        el.textContent = msg;
+        document.body.appendChild(el);
+        syncToastEl = el;
+        setTimeout(() => { el.remove(); if (syncToastEl === el) syncToastEl = null; }, 2400);
+      };
+      const explainStartup = () => window.__showSyncToast('Still connecting — please try again in a moment.');
+      // Keep waiting buttons focusable so both taps and keyboard activation can
+      // explain the wait. The capture handler prevents every blocked action.
+      document.addEventListener('click', e => {
+        const waitingButton = e.target.closest('[data-boot-disabled]');
+        const preview = e.target.closest('#boot-notes');
+        if (!waitingButton && (!preview || e.target.closest('a') || !getSelection().isCollapsed)) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        explainStartup();
+      }, true);
       const editor = document.getElementById('new-entry');
       const area = document.getElementById('input-area');
       const toggle = document.getElementById('toggle-new');
@@ -909,6 +933,13 @@
         toggle.classList.toggle('active', opened);
         if (opened) editor.focus();
       });
+      editor.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && document.getElementById('append-btn').hasAttribute('data-boot-disabled')) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          explainStartup();
+        }
+      });
       try {
         const theme = localStorage.getItem('theme');
         document.documentElement.classList.toggle('dark', theme === 'dark' ||
@@ -919,10 +950,11 @@
         }
       } catch (e) {}
       // Typing and opening the composer work during loading; other actions need
-      // the module. A visible status explains why Save is temporarily unavailable.
+      // the module. Show feedback when an action must wait, without discarding or
+      // replaying the draft automatically once initialization finishes.
       document.querySelectorAll('button').forEach(button => {
         if (button === toggle) return;
-        button.disabled = true;
+        button.setAttribute('aria-disabled', 'true');
         button.dataset.bootDisabled = '';
       });
       document.getElementById('status').textContent = 'Loading…';
@@ -937,12 +969,9 @@
   <script defer src="https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js"
           integrity="sha384-H+hy9ULve6xfxRkWIh/YOtvDdpXgV2fmAGQkIDTxIgZwNoaoBal14Di2YTMR6MzR"
           crossorigin="anonymous"></script>
-  <script type="module">
-    window.__bootMark('sdk-loaded'); // runs after the Firebase SDK imports resolve
-    const USER_ALIASES = {
-      'ricardo.vieira1994@gmail.com': 'Ricardo',
-      'schmidtevelin94@gmail.com': 'Evelin',
-    };
+  <!-- Shared Markdown rendering has no Firebase dependency. The initial preview
+       uses the same sanitizer and block parsing as the fully interactive notes. -->
+  <script type="module" id="cached-note-preview">
     const renderer = new marked.Renderer();
     const originalLink = renderer.link.bind(renderer);
     renderer.link = function(token) {
@@ -1014,16 +1043,6 @@
       });
     }
 
-    const pendingCheckboxUpdates = new Set();
-    // Matches both - [ ] and - ( ) checkbox syntaxes
-    const CB_RE = /^(\s*[-*]\s+)(?:\[([ xX])\]|\(([ xX]| )\))/gm;
-
-    // Re-render contentEl from markdown and re-attach all handlers
-    function rerenderContent(contentEl, entry) {
-      renderBlocks(contentEl, entry);
-    }
-
-    // ── Block model (source lines → [{start,end}] ranges) ──
     const isBlank = l => !l.trim();
     const isFence = l => /^\s*(```|~~~)/.test(l);
     const isListLine = l => /^\s*([-*+]\s|\d+[.)]\s)/.test(l);
@@ -1056,6 +1075,76 @@
     }
     const blockText = (content, b) => content.split('\n').slice(b.start, b.end + 1).join('\n');
 
+    function resolveImageRefs(content, images) {
+      if (!images || !content || content.indexOf('img:') === -1) return content;
+      return content.replace(/\bimg:([0-9a-f]{6,})\b/g, (m, id) => images[id] || m);
+    }
+    window.__noteMarkup = { cleanHtml, applyTodoMarkup, isBlank, isFence, isListLine, isHeading, isQuote, splitBlocks, blockText, resolveImageRefs };
+    try {
+      const remembered = localStorage.getItem('wasSignedIn');
+      if (remembered) {
+        const notes = JSON.parse(localStorage.getItem('notesCache') || '[]');
+        if (Array.isArray(notes)) {
+          // Transfer the parsed snapshot to the main module rather than reading
+          // and parsing localStorage a second time when Firebase arrives.
+          window.__bootNotes = notes;
+          const email = remembered === '1' ? null : remembered;
+          const preview = document.createElement('div');
+          preview.id = 'boot-notes';
+          preview.setAttribute('aria-label', 'Saved notes preview');
+          const start = performance.now();
+          for (const note of notes) {
+            if (!note || typeof note.content !== 'string') continue;
+            if (note.owner !== email && Array.isArray(note.hiddenFor) && note.hiddenFor.includes(email)) continue;
+            const card = document.createElement('div');
+            const rejected = note.owner === email && note.shared && Array.isArray(note.hiddenFor) && note.hiddenFor.length;
+            const forked = (note.orphanVersions || []).some(id => !(note.resolvedVersions || []).includes(id));
+            card.className = 'entry-card' + (rejected ? ' unlinked' : note.shared ? ' shared' : '') + (forked ? ' forked' : '');
+            const content = document.createElement('div');
+            content.className = 'entry-content';
+            for (const block of splitBlocks(note.content)) {
+              const div = document.createElement('div');
+              div.className = 'md-block';
+              if (isListLine(note.content.split('\n')[block.start])) div.classList.add('list-block');
+              div.innerHTML = cleanHtml(blockText(note.content, block), note.images);
+              content.appendChild(div);
+            }
+            applyTodoMarkup(content);
+            content.querySelectorAll('img').forEach(img => { img.loading = 'lazy'; });
+            card.appendChild(content);
+            preview.appendChild(card);
+            // Just a first-screen preview; full hydration streams the remaining
+            // notes with their controls. Do not block startup rendering the list twice.
+            if (preview.children.length >= 6 || performance.now() - start > 12) break;
+          }
+          if (preview.children.length) {
+            document.getElementById('entries-list').before(preview);
+            document.getElementById('auth-section').style.display = 'none';
+            document.getElementById('app').style.display = 'block';
+            window.__bootMark('local:preview (' + preview.children.length + ')');
+          }
+        }
+      }
+    } catch (e) { /* Missing/corrupt cache: the normal startup path still runs. */ }
+  </script>
+
+  <script type="module">
+    window.__bootMark('sdk-loaded'); // runs after the Firebase SDK imports resolve
+    const USER_ALIASES = {
+      'ricardo.vieira1994@gmail.com': 'Ricardo',
+      'schmidtevelin94@gmail.com': 'Evelin',
+    };
+    const { cleanHtml, applyTodoMarkup, isBlank, isFence, isListLine, isHeading, isQuote, splitBlocks, blockText, resolveImageRefs } = window.__noteMarkup;
+    const pendingCheckboxUpdates = new Set();
+    // Matches both - [ ] and - ( ) checkbox syntaxes
+    const CB_RE = /^(\s*[-*]\s+)(?:\[([ xX])\]|\(([ xX]| )\))/gm;
+
+    // Re-render contentEl from markdown and re-attach all handlers
+    function rerenderContent(contentEl, entry) {
+      renderBlocks(contentEl, entry);
+    }
+
+    // ── Block model (source lines → [{start,end}] ranges) ──
     // Map a click point inside rendered HTML back to an offset in the block's
     // markdown source: take the clicked text node, find its text in the source,
     // add the in-node offset. Falls back to end-of-block.
@@ -1316,9 +1405,9 @@
     // End a block-editing session, committing its RESULT as one version doc if the text
     // actually changed. Centralized so every teardown path archives — previously each of
     // the terminal sites just dropped the session on the floor.
-    function endBlockSession(entry) {
+    function endBlockSession(entry, { keepSession = false } = {}) {
       const session = blockSessions.get(entry.id);
-      blockSessions.delete(entry.id);
+      if (!keepSession) blockSessions.delete(entry.id);
       if (!session) return;
       // The session's result is `entry.content` — applyEntryContent mutates it SYNCHRONOUSLY.
       // Do NOT read it back from allEntries: that list is rebuilt from the Firestore
@@ -1327,15 +1416,28 @@
       const result = entry.content;
       if (result == null || result === session.startContent) return; // genuinely a no-op session
       commitVersion(entry.id, result, session.baseVersionId, null, entry);
+      if (keepSession) {
+        // commitVersion advances the local version synchronously, even offline.
+        // Keep the same session object captured by the open editor, but checkpoint
+        // its baseline so a later Save descends from this version and repeated
+        // lifecycle events cannot archive the same result twice.
+        session.startContent = result;
+        session.baseVersionId = entry.contentVersion;
+      }
     }
 
-    // A tab that goes away mid-session should still archive its result. Best-effort: a
-    // hard kill can outrun the batch reaching Firestore's offline queue, in which case
+    // A tab that goes away mid-session should still archive its result.
+    // Keep an open editor's session alive: hiding the page does not close its
+    // textarea, and saving on return must still archive that editor's result.
+    // This checkpoints already-applied changes; the current textarea stays an
+    // unsaved draft until Save, as before. A hard kill can outrun the batch reaching
+    // Firestore's offline queue, in which case
     // that session's version is lost (the PREVIOUS version doc still stands, so nothing
     // already committed is at risk — only the in-flight session).
     const flushBlockSessions = () => {
       for (const s of [...blockSessions.values()]) {
-        if (s.entry) endBlockSession(s.entry); else blockSessions.clear();
+        if (s.entry) endBlockSession(s.entry, { keepSession: activeBlock?.session === s });
+        else blockSessions.clear();
       }
     };
     window.addEventListener('beforeunload', flushBlockSessions);
@@ -3451,10 +3553,9 @@
     }
 
     function hydrateNotesLocal() {
-      let raw; try { raw = localStorage.getItem('notesCache'); } catch (e) { return; }
-      if (!raw) return;
       try {
-        const arr = JSON.parse(raw);
+        const arr = window.__bootNotes || JSON.parse(localStorage.getItem('notesCache') || 'null');
+        delete window.__bootNotes;
         if (!Array.isArray(arr)) return;
         allEntries = arr.map(n => {
           for (const f of NOTE_TS_FIELDS) if (typeof n[f] === 'number') n[f] = tsShim(n[f]);
@@ -3462,6 +3563,7 @@
         });
         scanEmojiUsage(allEntries);
         renderEntries();
+        document.getElementById('boot-notes')?.remove();
         window.__bootMark('local:notes (' + allEntries.length + ')');
       } catch (e) { /* corrupt — ignore, live listener repopulates */ }
     }
@@ -3472,16 +3574,7 @@
     // on screen reflects them yet. Let the write through and flash a toast so the tap
     // isn't silently ignored. `notesLoaded` (set by the entries listener) = "live".
     let notesLoaded = false;
-    let syncToastEl = null;
-    function showSyncToast(msg) {
-      if (syncToastEl) syncToastEl.remove();
-      const el = document.createElement('div');
-      el.className = 'sync-toast';
-      el.textContent = msg;
-      document.body.appendChild(el);
-      syncToastEl = el;
-      setTimeout(() => { el.remove(); if (syncToastEl === el) syncToastEl = null; }, 2400);
-    }
+    const showSyncToast = window.__showSyncToast;
     // Single choke point for every Firestore write: all call sites use these names.
     const guardWrite = (fn) => (...args) => {
       if (!notesLoaded) showSyncToast('Still connecting — your change will sync in a moment');
@@ -4357,12 +4450,6 @@
       return set;
     }
 
-    // Rendering: swap `img:<id>` for its stored data URI.
-    function resolveImageRefs(content, images) {
-      if (!images || !content || content.indexOf('img:') === -1) return content;
-      return content.replace(/\bimg:([0-9a-f]{6,})\b/g, (m, id) => images[id] || m);
-    }
-
     // Search / clipboard: drop the bulky ref, keep the alt text.
     function stripImageRefs(content) {
       return (content || '').replace(/!\[([^\]]*)\]\(img:[0-9a-f]{6,}\)/g, '$1');
@@ -4627,6 +4714,8 @@
         }
       } else {
         currentUserEmail = null;
+        document.getElementById('boot-notes')?.remove();
+        delete window.__bootNotes;
         localStorage.removeItem('wasSignedIn');
         // Don't leave notes readable in localStorage after sign-out.
         localStorage.removeItem('notesCache');
@@ -5769,6 +5858,7 @@
 
     document.querySelectorAll('[data-boot-disabled]').forEach(button => {
       button.disabled = false;
+      button.removeAttribute('aria-disabled');
       delete button.dataset.bootDisabled;
     });
     refreshNewSizeState();

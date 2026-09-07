@@ -21,6 +21,8 @@ CHROME=$(which chromium) ./tests/run.sh   # or point at any Chromium binary
 | Suite | Drives | Covers |
 |---|---|---|
 | `fork` | the real `checkForkAlerts` / `orphanVersionIds` / `markSeen`, sliced out of `index.html` | the stale-clobber race, every false-positive bug we shipped, the monotonic-`held` invariant, the three-valued walk |
+| `preview` | real page with Firebase imports held | sanitized formatted cache preview, hidden-note filtering, single cache read, safe handover, touch/keyboard feedback for blocked actions, queued edit/save feedback |
+| `background` | real page plus real session functions | repeated background/resume, paragraph/item/new-paragraph saves, history survives stale overwrite, offline checkpoint lineage |
 | `startup` | real page, delayed SDK and stalled access check | share editor opens before network waits, preserves typing, consumes share once, reads boot cache once |
 | `sync` | real page | clean sequential A→B sync raises no alert; coalesced remote chains aren't forks; genuine forks still fire |
 | `solo` | real page | one device, consecutive edits — the lineage must stay one unbroken chain |
@@ -65,6 +67,7 @@ and limitations. These use synthetic notes and never access production data.
 ```bash
 CHROME=/path/to/chrome node tests/benchmark-startup.mjs
 CHROME=/path/to/chrome node tests/benchmark-network.mjs
+CHROME=/path/to/chrome node tests/benchmark-preview.mjs
 ```
 
 The first benchmark downloads the app's pinned public SDK/Markdown scripts to `/tmp`
@@ -72,5 +75,8 @@ once; the network benchmark uses those files. The first compares original and se
 UI code under CPU/network throttling. The second verifies the actual service-worker
 cache path with a stalled server and fully offline. Both write JSON measurements under
 `tests/`. They are separate from `run.sh`, since benchmarks take longer and have no
-machine-independent speed threshold. Neither substitutes for a trace from the Android
+machine-independent speed threshold. The preview benchmark compares the deployed
+`609ef3d` page with the isolated pre-Firebase cache-preview proposal, generated before
+application changes; its raw measurements exclude the later loading-feedback UI.
+None substitutes for a trace from the Android
 phone or real Firebase/IndexedDB testing.
