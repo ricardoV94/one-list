@@ -14,8 +14,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-LOGIC=(fork)
-BROWSER=(startup preview background sync solo block acks propagate e2e)
+LOGIC=(fork calculator)
+BROWSER=(startup preview background sync solo block acks propagate e2e calculator-ui)
 SUITES=("${@:-}")
 if [ -z "${1:-}" ]; then SUITES=("${LOGIC[@]}" "${BROWSER[@]}"); fi
 

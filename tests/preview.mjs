@@ -13,8 +13,8 @@ try {
   localStorage.setItem('wasSignedIn','me@test.dev');
   localStorage.setItem('notesCache',JSON.stringify([
    {id:'hidden',content:'Do not preview this set-aside note',owner:'other@test.dev',shared:true,hiddenFor:['me@test.dev']},
-   {id:'cached',content:'## Cached heading\n\nVisible **bold** text\n\n- (x) Finished task\n\n<img src="x" onerror="window.__unsafe=1"><script>window.__unsafe=1<\/script>',owner:'me@test.dev',createdAt:1788732000000,sortTime:1788732000000},
-   {id:'forked',content:'Saved with an unresolved edit',owner:'me@test.dev',shared:true,orphanVersions:['v1']},
+   {id:'cached',content:'## Cached heading\n\nVisible **bold** text\n\n- (x) Finished task\n\n<img src="x" onerror="window.__unsafe=1"><script>window.__unsafe=1<\/script>\n\nRevenue: #{revenue = 25.00}\nCost: #{cost = 17.50}\n\nProfit: #{revenue - cost}\nReturn: #{(revenue - cost) / revenue * 100}',owner:'me@test.dev',createdAt:1788732000000,sortTime:1788732000000},
+   {id:'forked',content:'Saved with an unresolved edit\n\n$= revenue',owner:'me@test.dev',shared:true,orphanVersions:['v1']},
   ]));
   const get=Storage.prototype.getItem;window.__cacheReads=0;
   Storage.prototype.getItem=function(key){if(key==='notesCache')window.__cacheReads++;return get.call(this,key);};
@@ -29,6 +29,8 @@ try {
  ok('cached notes visible while Firebase imports are blocked',await page.locator('#boot-notes .entry-content').first().isVisible());
  ok('preview uses formatted Markdown',await page.locator('#boot-notes h2').evaluateAll(nodes=>nodes[0]?.textContent)==='Cached heading');
  ok('legacy checkbox formatting preserved',await page.locator('#boot-notes .todo-item.checked').count()===1);
+ const expectedCalculations=['Revenue: 25.00','Cost: 17.50','Profit: 7.50','Return: 30.00'];
+ ok('cached calculator shares quantities across paragraphs before Firebase',await page.locator('#boot-notes .entry-card').first().evaluate((card, expected) => expected.every(text => card.textContent.includes(text)), expectedCalculations));
  ok('set-aside note excluded',!(await page.locator('#boot-notes').evaluateAll(nodes=>nodes[0]?.textContent || '')).includes('Do not preview'));
  ok('cached HTML sanitized',await page.evaluate(()=>!window.__unsafe && !document.querySelector('#boot-notes [onerror], #boot-notes script')));
  ok('preview has no write controls',await page.locator('#boot-notes button, #boot-notes input:not([disabled])').count()===0);
@@ -65,6 +67,7 @@ try {
  await page.waitForTimeout(300);
  ok('preview replaced by interactive cards',await page.locator('#boot-notes').count()===0 && await page.locator('#entries-list .entry-card').count()===2);
  ok('fork marker present after takeover',await page.locator('#entries-list .entry-card.forked').count()===1);
+ ok('calculator results remain the same after handover',await page.locator('#entries-list .entry-card').filter({has:page.locator('h2')}).evaluate((card, expected) => expected.every(text => card.textContent.includes(text)), expectedCalculations));
  ok('notes cache read once across both stages',await page.evaluate(()=>window.__cacheReads===1));
  ok('share draft survives takeover',await page.locator('#new-entry').inputValue()==='Edited share while reading cached notes');
  ok('save enabled after handlers initialize',!await page.locator('#append-btn').isDisabled());
