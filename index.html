@@ -41,7 +41,7 @@
   <script>window.__bootMark = function () {};</script>
   <!--
   <script>
-    window.__BUILD = '2026-09-21 17:20'; // replaced with the deploy timestamp by stamp-deploy.sh
+    window.__BUILD = '2026-09-21 19:04'; // replaced with the deploy timestamp by stamp-deploy.sh
     window.__bootTimeline = [];
     window.__bootMark = function (label) {
       var t = performance.now();
@@ -880,7 +880,7 @@
 
   <div id="app">
     <header>
-      <h1 aria-label="One List" style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="" width="32" height="32" style="display:block;background:#7bae7f;border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-09-21 17:20</span></h1>
+      <h1 aria-label="One List" style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="" width="32" height="32" style="display:block;background:#7bae7f;border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-09-21 19:04</span></h1>
       <div class="header-icons">
         <span id="offline-badge" class="header-note" style="display:none">offline</span>
         <button id="sign-out-btn" title="Sign out"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
@@ -4406,7 +4406,7 @@
       if (days < 7) return days + 'd ago';
       if (days < 30) return Math.floor(days / 7) + 'w ago';
       const months = Math.floor(days / 30);
-      if (months < 12) return months + 'm ago';
+      if (months < 12) return months + (months === 1 ? ' month ago' : ' months ago');
       const years = Math.floor(months / 12);
       return years + 'y ago';
     }
