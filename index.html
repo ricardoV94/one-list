@@ -41,7 +41,7 @@
   <script>window.__bootMark = function () {};</script>
   <!--
   <script>
-    window.__BUILD = '2026-09-21 19:04'; // replaced with the deploy timestamp by stamp-deploy.sh
+    window.__BUILD = '2026-09-21 19:45'; // replaced with the deploy timestamp by stamp-deploy.sh
     window.__bootTimeline = [];
     window.__bootMark = function (label) {
       var t = performance.now();
@@ -413,7 +413,8 @@
     }
 
     /* ── Todo items - ( ) — circular checkbox ── */
-    .entry-content li.todo-item { list-style: none; margin-left: -24px; display: flex; align-items: center; padding: 3px 0; }
+    .entry-content li.todo-item { list-style: none; margin-left: -24px; display: flex; flex-wrap: wrap; align-items: center; padding: 3px 0; }
+    .entry-content li.todo-item > ul, .entry-content li.todo-item > ol { flex-basis: 100%; box-sizing: border-box; }
     .entry-content li.todo-item + li.todo-item { border-top: 1px solid #eee; }
     .history-viewing .entry-content li.todo-item + li.todo-item { border-top: none; }
     .history-viewing .entry-content li.todo-item { padding: 0; }
@@ -422,7 +423,8 @@
     /* Same line box as .item-edit, which autosize() snaps to whole lines — so the row
        keeps its exact height when its text is swapped for the editor. */
     .entry-content li.todo-item .todo-text { flex: 1; min-height: 1.3em; line-height: 1.3; }
-    .entry-content li.todo-item.checked .todo-text { color: #aaa; text-decoration: line-through; }
+    .entry-content li.todo-item.checked > .todo-text,
+    .entry-content li.todo-item.checked > p > .todo-text { color: #aaa; text-decoration: line-through; }
 
     /* ── Per-item editing ──
        Click a list row to edit just its text; click the gutter (either side of the
@@ -437,7 +439,8 @@
       border: none; outline: none; background: none;
       resize: none; overflow-y: hidden; display: block; /* textarea: wrap + autosize */
     }
-    .entry-content li.todo-item.checked .item-edit { color: #aaa; text-decoration: line-through; }
+    .entry-content li.todo-item.checked > .item-edit,
+    .entry-content li.todo-item.checked > p > .item-edit { color: #aaa; text-decoration: line-through; }
     /* The edited row just gets a faint shade; the blue ridge is drawn separately by
        .edit-ridge, anchored to the CARD's right edge and sized to the row. The row
        bleeds right to the card edge (−20 margin, +20 padding keeps its text put) so
@@ -504,6 +507,9 @@
 
     .entry-actions button:active { background: #eee; }
     .entry-actions button:disabled { opacity: 0.4; cursor: default; }
+    @media (pointer: coarse) {
+      .entry-actions .indent-button { min-width: 44px; min-height: 44px; }
+    }
     /* Blue (the --edit-cue used for the editing bar) marks save as the edit/confirm
        action; the variable flips automatically in dark mode. */
     .entry-actions button.btn-save { background: var(--edit-cue); border-color: var(--edit-cue); color: #fff; }
@@ -880,7 +886,7 @@
 
   <div id="app">
     <header>
-      <h1 aria-label="One List" style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="" width="32" height="32" style="display:block;background:#7bae7f;border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-09-21 19:04</span></h1>
+      <h1 aria-label="One List" style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="" width="32" height="32" style="display:block;background:#7bae7f;border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-09-21 19:45</span></h1>
       <div class="header-icons">
         <span id="offline-badge" class="header-note" style="display:none">offline</span>
         <button id="sign-out-btn" title="Sign out"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
@@ -1144,12 +1150,13 @@
     // Post-process rendered HTML to set up todo items
     function applyTodoMarkup(contentEl) {
       contentEl.querySelectorAll('li').forEach(li => {
-        const cb = li.querySelector('input[type="checkbox"]');
+        const cb = li.querySelector(':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]');
         if (!cb) return;
         // Check if this li's text contains the todo marker
         const walker = document.createTreeWalker(li, NodeFilter.SHOW_TEXT);
         let found = false;
         while (walker.nextNode()) {
+          if (walker.currentNode.parentElement.closest('li') !== li) continue;
           if (walker.currentNode.textContent.includes(TODO_MARKER)) {
             walker.currentNode.textContent = walker.currentNode.textContent.replace(TODO_MARKER, '');
             found = true;
@@ -1162,8 +1169,8 @@
         // between separate inline children, and wrapped lines hang-indent.
         const span = document.createElement('span');
         span.className = 'todo-text';
-        while (cb.nextSibling) span.appendChild(cb.nextSibling);
-        li.appendChild(span);
+        while (cb.nextSibling && !['UL', 'OL'].includes(cb.nextSibling.nodeName)) span.appendChild(cb.nextSibling);
+        cb.after(span);
         // Only marked todos become todo-items. No view-mode delete button or grip
         // anymore — click a row to edit it; trash + drag live in edit mode.
         if (!found) return;
@@ -1996,6 +2003,32 @@
       }
     }
 
+    // A paragraph following a list joins its last visible row, then continues in
+    // that row's editor. Keep soft breaks on one source line, as item editors do.
+    function mergePreviousBlock(entry, contentEl, prev, afterLine, text, session) {
+      const lines = entry.content.split('\n');
+      const lastItem = isListLine(lines[prev.start]) && isListLine(lines[prev.end]);
+      const previousText = lastItem ? itemTextOf(lines[prev.end])
+        : lines.slice(prev.start, prev.end + 1).join('\n');
+      let caret = collapseForEdit(previousText).text.length;
+      if (lastItem) {
+        caret = collapseForEdit(previousText).text.replace(/<br\s*\/?>/gi, '\n').length;
+        lines[prev.end] += text.replace(/\n/g, '<br>');
+        applyEntryContent(entry, [...lines.slice(0, prev.end + 1), ...lines.slice(afterLine)].join('\n'), session);
+      } else {
+        applyEntryContent(entry, [...lines.slice(0, prev.start), ...(previousText + text).split('\n'), ...lines.slice(afterLine)].join('\n'), session);
+      }
+      contentEl.closest('.entry-card').__toView();
+      if (lastItem) {
+        const row = findItemLiByIdx(contentEl, prev.end);
+        if (row) beginItemEdit(row, row.closest('.md-block'), caret);
+      } else {
+        const block = findBlockUnit(contentEl, prev.start, previousText + text);
+        if (block) beginBlockEdit(block, caret);
+      }
+      if (activeBlock?.entry === entry) activeBlock.ta.setSelectionRange(caret, caret);
+    }
+
     // Build a small icon button for the sticky edit toolbar (format tools on the
     // left, then esc-hint, then cancel ✕ + save ✓ on the right).
     const iconBtn = (icon, title, cls) => {
@@ -2078,8 +2111,12 @@
       requestAnimationFrame(() => { autosize(ta); keepCaretVisible(ta); });
       ta.addEventListener('input', () => { autosize(ta); keepCaretVisible(ta); relayoutActiveEdit(); });
       attachImageInput(ta);
+      ta.addEventListener('beforeinput', e => {
+        if (!e.isComposing && e.inputType === 'deleteContentBackward') navCtx?.mergePrev?.(e);
+      });
       let escPending = false;
       ta.addEventListener('keydown', (e) => {
+        if (e.isComposing) return;
         if (e.key === 'Escape') {
           e.preventDefault();
           const dirty = expandFromEdit(ta.value, order).replace(/\n+$/, '') !== initialSrc;
@@ -2165,28 +2202,18 @@
       // Section delete lives on the edit handle now, not the bottom toolbar.
       const deleteBlock = () => { if (activeBlock === current) { activeBlock = null; activeEdits.delete(entry.id); applyBlockEdit(entry, b, '', session); endBlockSession(entry); card.__toView(); } };
 
-      // Backspace at the very start merges this block into the previous one: its
-      // text is appended to the previous block's source (blank separator dropped,
-      // caret at the join) — the block-level analog of the list-row merge.
+      // Backspace at the start joins the previous block (or its last list item).
+      // The blank editor left by removing an empty bullet has no splitBlocks entry.
       const mergeIntoPrev = (e) => {
         if (ta.selectionStart !== 0 || ta.selectionEnd !== 0) return false;
         const blocks = splitBlocks(entry.content);
-        const idx = blocks.findIndex(x => x.start === b.start);
-        if (idx <= 0) return false; // first block → nothing before to merge into
+        const prev = blocks.filter(x => x.end < b.start).at(-1);
+        if (!prev) return false;
         e.preventDefault();
-        const prev = blocks[idx - 1];
-        const lines = entry.content.split('\n');
-        const prevText = lines.slice(prev.start, prev.end + 1).join('\n');
         const thisText = expandFromEdit(ta.value, order).replace(/\n+$/, '');
-        const caretPos = prevText.length;
-        const merged = prevText + thisText;
-        const newContent = [...lines.slice(0, prev.start), ...merged.split('\n'), ...lines.slice(b.end + 1)].join('\n');
         if (activeBlock !== current) return true;
         activeBlock = null; activeEdits.delete(entry.id);
-        applyEntryContent(entry, newContent, session);
-        card.__toView();
-        const blk = [...contentEl.querySelectorAll('.md-block')].find(x => x.__block && x.__block.start === prev.start);
-        if (blk) beginBlockEdit(blk, caretPos);
+        mergePreviousBlock(entry, contentEl, prev, b.end + 1, thisText, session);
         return true;
       };
 
@@ -2279,13 +2306,8 @@
         if (activeBlock !== current) return true;
         activeBlock = null; activeEdits.delete(entry.id);
         const prev = blocks[blocks.length - 1];
-        const lines = entry.content.split('\n');
-        const prevText = lines.slice(prev.start, prev.end + 1).join('\n');
         const thisText = expandFromEdit(ta.value, ta._imgOrder).replace(/\n+$/, '');
-        if (thisText) applyEntryContent(entry, [...lines.slice(0, prev.start), ...(prevText + thisText).split('\n')].join('\n'), session);
-        card.__toView();
-        const blk = [...contentEl.querySelectorAll('.md-block')].find(x => x.__block && x.__block.start === prev.start);
-        if (blk) beginBlockEdit(blk, prevText.length);
+        mergePreviousBlock(entry, contentEl, prev, entry.content.split('\n').length, thisText, session);
         return true;
       };
       wireBlockEditor(ta, [], '', commit, { entry, contentEl, mergePrev: mergeNewIntoPrev });
@@ -2295,6 +2317,16 @@
     // prefix = the marker (+ checkbox syntax); group 2 = the row's editable text.
     const ITEM_RE = /^(\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s*|\([ xX]\)\s*)?)(.*)$/;
     const itemTextOf = (line) => { const m = (line || '').match(ITEM_RE); return m ? m[2] : (line || ''); };
+
+    // Markdown indentation columns (tabs advance to the next four-column stop).
+    const listIndent = line => [...line.match(/^[ \t]*/)[0]].reduce((n, c) => n + (c === '\t' ? 4 - n % 4 : 1), 0);
+    const shiftListIndent = (line, delta) => ' '.repeat(Math.max(0, listIndent(line) + delta)) + line.replace(/^[ \t]*/, '');
+    function listSubtreeEnd(lines, start) {
+      const indent = listIndent(lines[start]);
+      let end = start + 1;
+      while (end < lines.length && lines[end].trim() && listIndent(lines[end]) > indent) end++;
+      return end;
+    }
 
     // Re-find a list <li> after a re-render by its source text (line indices shift).
     function findItemLi(contentEl, text) {
@@ -2333,7 +2365,7 @@
       input.rows = 1;
       input.value = collapsedShown;
       const readSrc = () => expandFromEdit(input.value, order).replace(/\n/g, '<br>');
-      const span = li.querySelector('.todo-text');
+      const span = li.querySelector(':scope > .todo-text, :scope > p > .todo-text');
       if (span) span.replaceWith(input);
       else {
         // Plain row: keep a nested sub-list intact — drop only the leading text
@@ -2347,7 +2379,7 @@
       // Keep the checkbox toggleable while editing: clone it (drops the view-mode
       // change handler that would re-render), and on toggle rewrite the marker in
       // `prefix` + restyle the row — no re-render, so the edit is untouched.
-      const cb = li.querySelector('input[type="checkbox"]');
+      const cb = li.querySelector(':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]');
       if (cb) {
         const freshCb = cb.cloneNode(false);
         cb.replaceWith(freshCb);
@@ -2372,8 +2404,8 @@
         activeEdits.delete(entry.id);
         if (save) {
           const v = readSrc().trim();
-          // Keep the row even when empty (an intentional blank item) — only
-          // Backspace-merge and the trash button remove a row.
+          // Keep an intentional blank item; removing its marker is an explicit
+          // outdent/Backspace action, and deleting it is the trash action.
           commitItemLine(entry, lineIdx, prefix + v, session);
         }
         if (!opts.keepSession) endBlockSession(entry);
@@ -2381,10 +2413,88 @@
       };
       const current = activeBlock;
       current.commit = commit;
+      const parentLi = li.parentElement.closest('li');
+      const previousLi = li.previousElementSibling;
+      const isNested = parentLi?.__lineIdx != null;
+      const canIndent = previousLi?.__lineIdx != null;
+      const turnIntoParagraph = () => {
+        const lines = entry.content.split('\n');
+        const end = listSubtreeEnd(lines, lineIdx);
+        const child = li.querySelector(':scope > ul > li, :scope > ol > li');
+        const childIndent = child?.__lineIdx != null ? listIndent(lines[child.__lineIdx]) : listIndent(prefix);
+        // Children of the former root become root items; surrounding lists stay
+        // separated from the new paragraph by blank lines.
+        const children = lines.slice(lineIdx + 1, end).map(line => shiftListIndent(line, -childIndent));
+        const head = lines.slice(0, lineIdx);
+        if (head.length && head[head.length - 1].trim()) head.push('');
+        const start = head.length;
+        const paragraph = expandFromEdit(input.value, order).split('\n');
+        const tail = [...children, ...lines.slice(end)];
+        const next = [...head, ...paragraph];
+        if (tail.length && tail[0].trim()) next.push('');
+        next.push(...tail);
+        const { selectionStart, selectionEnd, selectionDirection } = input;
+        activeBlock = null; activeEdits.delete(entry.id);
+        applyEntryContent(entry, next.join('\n'), session);
+        card.__toView();
+        let block = [...contentEl.querySelectorAll('.md-block')].find(el => el.__block.start === start);
+        if (!block) {
+          // An empty former bullet still needs an editor at this exact position.
+          block = document.createElement('div');
+          block.className = 'md-block';
+          block.__entry = entry;
+          block.__block = { start, end: start + paragraph.length - 1 };
+          const following = [...contentEl.querySelectorAll('.md-block')].find(el => el.__block.start > start);
+          contentEl.insertBefore(block, following || contentEl.querySelector('.new-zone.bottom'));
+        }
+        beginBlockEdit(block, selectionStart);
+        activeBlock.ta.setSelectionRange(selectionStart, selectionEnd, selectionDirection);
+      };
+      const changeIndent = direction => {
+        if (activeBlock !== current || (direction > 0 && !canIndent)) return;
+        if (direction < 0 && !isNested) { turnIntoParagraph(); return; }
+        const lines = entry.content.split('\n');
+        lines[lineIdx] = prefix + readSrc();
+        const end = listSubtreeEnd(lines, lineIdx);
+        const oldIndent = listIndent(lines[lineIdx]);
+        let targetIndent, insertAt = lineIdx;
+        if (direction > 0) {
+          // Nest under the previous sibling, matching its existing children if any.
+          const child = previousLi.querySelector(':scope > ul > li, :scope > ol > li');
+          const previousLine = lines[previousLi.__lineIdx];
+          const marker = previousLine.trimStart().match(/^(?:[-*+]|\d+[.)])[ \t]+/)[0];
+          targetIndent = child?.__lineIdx != null ? listIndent(lines[child.__lineIdx])
+            : listIndent(previousLine) + marker.length;
+        } else {
+          targetIndent = listIndent(lines[parentLi.__lineIdx]);
+          // Keep the parent's remaining children attached to that parent.
+          insertAt = listSubtreeEnd(lines, parentLi.__lineIdx) - (end - lineIdx);
+        }
+        const moved = lines.splice(lineIdx, end - lineIdx).map(line => shiftListIndent(line, targetIndent - oldIndent));
+        lines.splice(insertAt, 0, ...moved);
+        const { selectionStart, selectionEnd, selectionDirection } = input;
+        activeBlock = null; activeEdits.delete(entry.id);
+        applyEntryContent(entry, lines.join('\n'), session);
+        card.__toView();
+        reopenItem(insertAt, readSrc().trim(), selectionStart);
+        if (activeBlock?.isItem && activeBlock.entry === entry) {
+          activeBlock.ta.setSelectionRange(selectionStart, selectionEnd, selectionDirection);
+        }
+      };
+      const indentButton = direction => () => {
+        const title = direction > 0 ? 'Indent (Tab)' : (isNested ? 'Outdent (Shift+Tab)' : 'Turn into paragraph (Shift+Tab)');
+        const arrow = direction > 0 ? 'M3 9l3 3-3 3' : 'M6 9l-3 3 3 3';
+        const button = iconBtn(`<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18M10 9h11M10 15h11M3 20h18${arrow}"/></svg>`, title, 'indent-button');
+        button.setAttribute('aria-label', title);
+        button.disabled = direction > 0 && !canIndent;
+        button.addEventListener('pointerdown', e => e.preventDefault()); // keep the mobile keyboard open
+        button.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); changeIndent(direction); });
+        return button;
+      };
       current.escHint = mountBlockToolbar(actions, input, {
         onSave: () => commit(true),
         onCancel: () => commit(false),
-      }, [makeFormatButton, makeLinkButton, makeImageButton, makeEmojiButton]);
+      }, [indentButton(-1), indentButton(1), makeFormatButton, makeLinkButton, makeImageButton, makeEmojiButton]);
       // Row delete lives on the edit handle now, not the bottom toolbar.
       const deleteItem = () => { if (activeBlock === current) { activeBlock = null; activeEdits.delete(entry.id); commitItemLine(entry, lineIdx, null, session); endBlockSession(entry); card.__toView(); } };
 
@@ -2429,15 +2539,25 @@
         requestAnimationFrame(relayoutActiveEdit);
       }
 
-      // Split at the caret into a new row below; merge into the previous row on
-      // Backspace at the start — reopening the resulting row keeps you editing.
+      // Splitting and changing nesting reopen the affected row to keep editing.
       // Prefer the (known, unique) line index; text collides on empty/dup rows.
       const reopenItem = (targetLineIdx, targetText, targetCaret) => {
         const t = findItemLiByIdx(contentEl, targetLineIdx) || findItemLi(contentEl, targetText);
         if (t) beginItemEdit(t, t.closest('.md-block'), targetCaret);
       };
+      // Mobile keyboards may send beforeinput without a Backspace keydown.
+      input.addEventListener('beforeinput', e => {
+        if (!e.isComposing && e.inputType === 'deleteContentBackward'
+            && input.selectionStart === 0 && input.selectionEnd === 0) {
+          e.preventDefault(); changeIndent(-1);
+        }
+      });
       let escPending = false;
       input.addEventListener('keydown', (e) => {
+        if (e.isComposing) return;
+        if (e.key === 'Tab' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault(); changeIndent(e.shiftKey ? -1 : 1); return;
+        }
         if (e.key === 'Escape') {
           e.preventDefault();
           const dirty = readSrc().trim() !== text.trim() || prefix !== (m ? m[1] : '');
@@ -2486,61 +2606,7 @@
           return;
         }
         if (e.key === 'Backspace' && input.selectionStart === 0 && input.selectionEnd === 0) {
-          const prevLi = li.previousElementSibling;
-          const thisText = readSrc();
-          if (prevLi && prevLi.__lineIdx != null) {
-            // Merge into the previous list row.
-            e.preventDefault();
-            if (activeBlock !== current) return;
-            activeBlock = null; activeEdits.delete(entry.id);
-            const prevLineIdx = prevLi.__lineIdx; // stable (before lineIdx, unshifted by the splice)
-            const lines = entry.content.split('\n');
-            const pm = (lines[prevLineIdx] || '').match(ITEM_RE);
-            const prevPrefix = pm ? pm[1] : '';
-            const prevText = pm ? pm[2] : (lines[prevLineIdx] || '');
-            const merged = prevText + thisText;
-            lines[prevLineIdx] = prevPrefix + merged;
-            lines.splice(lineIdx, 1);
-            applyEntryContent(entry, lines.join('\n'), session);
-            card.__toView();
-            reopenItem(prevLineIdx, merged.trim(), prevText.length); // the merged row
-            return;
-          }
-          // Topmost row of the list: merge into the previous UNIT instead of bailing —
-          // the same neighbor ArrowUp hops to (a paragraph/heading block, or a prior
-          // list's last row). Mirrors the block editor's mergeIntoPrev.
-          const target = neighborUnit(entry, lineIdx, -1);
-          if (!target) return; // nothing before → browser default
-          e.preventDefault();
-          if (activeBlock !== current) return;
-          activeBlock = null; activeEdits.delete(entry.id);
-          const lines = entry.content.split('\n');
-          if (target.kind === 'item') {
-            const pm = (lines[target.lineIdx] || '').match(ITEM_RE);
-            const prevPrefix = pm ? pm[1] : '';
-            const prevText = pm ? pm[2] : (lines[target.lineIdx] || '');
-            const merged = prevText + thisText;
-            lines[target.lineIdx] = prevPrefix + merged;
-            lines.splice(lineIdx, 1);
-            applyEntryContent(entry, lines.join('\n'), session);
-            card.__toView();
-            reopenItem(target.lineIdx, merged.trim(), prevText.length);
-          } else {
-            // Previous unit is a block (paragraph/heading): append this row's text to
-            // its end, drop the blank separator, keep any remaining rows as their own
-            // block. Caret lands at the join, like mergeIntoPrev.
-            const blocks = splitBlocks(entry.content);
-            const prev = blocks[blocks.findIndex(x => x.start <= lineIdx && lineIdx <= x.end) - 1];
-            const prevText = lines.slice(prev.start, prev.end + 1).join('\n');
-            const head = [...lines.slice(0, prev.start), ...(prevText + thisText).split('\n')];
-            const tail = lines.slice(lineIdx + 1); // remaining rows + anything after
-            const newContent = (tail.length && tail[0].trim() !== '' ? [...head, '', ...tail] : [...head, ...tail]).join('\n');
-            applyEntryContent(entry, newContent, session);
-            card.__toView();
-            const blk = [...contentEl.querySelectorAll('.md-block')].find(x => x.__block && x.__block.start === prev.start);
-            if (blk) beginBlockEdit(blk, prevText.length);
-          }
-          return;
+          e.preventDefault(); changeIndent(-1);
         }
       });
     }

@@ -5,6 +5,8 @@ suites encode real bugs that reached production, several of them replaying the e
 logs from the reports.
 
 ```bash
+npm test                   # standard entry point (uses cached Chromium)
+npm test -- nesting block  # named suites
 ./tests/run.sh              # everything
 ./tests/run.sh fork e2e     # named suites
 ```
@@ -27,6 +29,7 @@ CHROME=$(which chromium) ./tests/run.sh   # or point at any Chromium binary
 | `calculator` | the real arithmetic parser and formatter, sliced out of `index.html` | precedence, precision propagation, suffixes, invalid input, bounded parsing |
 | `calculator-ui` | real page | inline expressions in bold text and checkbox rows, old dollar syntax stays literal, source-order evaluation, editing and recalculation, note-local names, code/URL exclusion and error recovery |
 | `width` | real page | browser-local note width, drag bounds, keyboard shortcuts have no effect, no database writes, persistence across reload and narrow/touch layouts |
+| `nesting` | real page | Tab/Shift+Tab and touch controls, subtree preservation, one-level Backspace, outermost-to-paragraph conversion, merging into the last nested row, draft/selection/history, nested checkboxes |
 | `sync` | real page | clean sequential A→B sync raises no alert; coalesced remote chains aren't forks; genuine forks still fire |
 | `solo` | real page | one device, consecutive edits — the lineage must stay one unbroken chain |
 | `block` | real page | block-editor sessions commit exactly one version at teardown (coalesced, not per keystroke) |
