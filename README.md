@@ -9,6 +9,7 @@ Built as a single-page PWA with Firebase — no build step, no dependencies beyo
 - **Append-only flow** — new entries go to the top, older ones sink naturally
 - **Bump** — resurface any entry to the top without duplicating it
 - **Inline editing** — edit in place with version history; browse, restore, or delete past versions
+- **Nested lists** — while editing a bullet, numbered item, or checkbox row, use Tab to nest under the previous sibling and Shift+Tab to move out one level. Indent/outdent toolbar buttons also work on touch screens. Children move with the item. Backspace at the start also outdents; at the outermost level, outdenting turns the item into a regular paragraph. Backspace at the start of a paragraph merges into the previous block, continuing in its last item if it is a list.
 - **Loss-proof history** — every editing session archives its result as an immutable version, so a note overwritten by an out-of-sync device is always recoverable; the note is flagged with a rose edge on every device until the overwritten text is rescued or deleted. See [history-robustness-spec.md](history-robustness-spec.md)
 - **Sharing** — toggle entries as shared; collaborators can view and edit shared entries
 - **Search & filter** — full-text search and view mode cycling (all / shared / unshared)

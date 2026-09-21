@@ -14,8 +14,16 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# Reuse a locally installed Chromium when Playwright's exact bundle is absent.
+# An explicit CHROME always wins.
+if [ -z "${CHROME:-}" ]; then
+  for candidate in "$HOME"/.cache/ms-playwright/chromium-*/chrome-linux*/chrome; do
+    if [ -x "$candidate" ]; then export CHROME="$candidate"; fi
+  done
+fi
+
 LOGIC=(fork calculator)
-BROWSER=(startup preview background sync solo block acks propagate e2e calculator-ui width)
+BROWSER=(startup preview background sync solo block acks propagate e2e calculator-ui width nesting)
 SUITES=("${@:-}")
 if [ -z "${1:-}" ]; then SUITES=("${LOGIC[@]}" "${BROWSER[@]}"); fi
 
@@ -31,7 +39,7 @@ for t in "${SUITES[@]}"; do
   if [ $RC -ne 0 ]; then
     FAILED=$((FAILED+1))
     printf '%-12s %s\n' "$t:" "${LINE:-CRASHED}"
-    echo "$OUT" | grep -E 'FAIL|Error|error:' | head -20 | sed 's/^/    /'
+    printf '%s\n' "$OUT" | tail -60 | sed 's/^/    /'
   else
     printf '%-12s %s\n' "$t:" "$LINE"
   fi
