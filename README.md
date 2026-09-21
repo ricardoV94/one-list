@@ -16,7 +16,8 @@ Built as a single-page PWA with Firebase — no build step, no dependencies beyo
 - **Offline-first** — Firestore persistent cache + service worker; works without connectivity. Uses the multi-tab cache manager (`persistentMultipleTabManager`) so concurrent tabs share one cache/connection and a crashed PWA instance can't hold the persistence lease — the standard choice across the one_list / recipes / money apps
 - **Dark mode** — follows system preference
 - **Adjustable note width** — on wider screens with a mouse, drag a note's left edge
-  to resize all notes together. The width resets on reload.
+  to resize all notes together. The width is remembered in this browser only,
+  using local storage; it is not shared or synced to other devices.
 - **PWA** — installable on mobile and desktop
 
 ## Message calculator

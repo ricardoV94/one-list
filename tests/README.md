@@ -26,7 +26,7 @@ CHROME=$(which chromium) ./tests/run.sh   # or point at any Chromium binary
 | `startup` | real page, delayed SDK and stalled access check | share editor opens before network waits, preserves typing, consumes share once, reads boot cache once |
 | `calculator` | the real arithmetic parser and formatter, sliced out of `index.html` | precedence, precision propagation, suffixes, invalid input, bounded parsing |
 | `calculator-ui` | real page | inline expressions in bold text and checkbox rows, old dollar syntax stays literal, source-order evaluation, editing and recalculation, note-local names, code/URL exclusion and error recovery |
-| `width` | real page | shared note width, drag bounds, keyboard shortcuts have no effect, no writes, reload and narrow/touch layouts |
+| `width` | real page | browser-local note width, drag bounds, keyboard shortcuts have no effect, no database writes, persistence across reload and narrow/touch layouts |
 | `sync` | real page | clean sequential A→B sync raises no alert; coalesced remote chains aren't forks; genuine forks still fire |
 | `solo` | real page | one device, consecutive edits — the lineage must stay one unbroken chain |
 | `block` | real page | block-editor sessions commit exactly one version at teardown (coalesced, not per keystroke) |
