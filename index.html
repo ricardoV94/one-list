@@ -41,7 +41,7 @@
   <script>window.__bootMark = function () {};</script>
   <!--
   <script>
-    window.__BUILD = '2026-10-12 17:32'; // replaced with the deploy timestamp by stamp-deploy.sh
+    window.__BUILD = '2026-10-12 18:51'; // replaced with the deploy timestamp by stamp-deploy.sh
     window.__bootTimeline = [];
     window.__bootMark = function (label) {
       var t = performance.now();
@@ -251,6 +251,11 @@
        so the composer presents as a blank note in edit mode with zero duplication. */
     #input-area.open { display: block; }
     #search-area { display: none; }
+    #app.note-focus #input-area:not(.focused-note),
+    #app.note-focus #entries-list > .entry-card:not(.focused-note),
+    #app.note-focus #search-area,
+    #app.note-focus #toggle-search,
+    #app.note-focus #view-popover { display: none !important; }
 
     /* #new-entry styling is shared from the .edit-textarea rule above. */
 
@@ -507,6 +512,9 @@
 
     .entry-actions button:active { background: #eee; }
     .entry-actions button:disabled { opacity: 0.4; cursor: default; }
+    .entry-actions .edit-controls {
+      display: flex; align-items: center; gap: inherit; margin-left: auto; flex-shrink: 0;
+    }
     @media (pointer: coarse) {
       .entry-actions .indent-button { min-width: 44px; min-height: 44px; }
     }
@@ -886,7 +894,7 @@
 
   <div id="app">
     <header>
-      <h1 aria-label="One List" style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="" width="32" height="32" style="display:block;background:#7bae7f;border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-10-12 17:32</span></h1>
+      <h1 aria-label="One List" style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="" width="32" height="32" style="display:block;background:#7bae7f;border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-10-12 18:51</span></h1>
       <div class="header-icons">
         <span id="offline-badge" class="header-note" style="display:none">offline</span>
         <button id="sign-out-btn" title="Sign out"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
@@ -2046,8 +2054,10 @@
       actions.replaceChildren();
       (toolFactories || ALL_TOOLS).forEach(f => actions.append(f(ta)));
       if (escHint) actions.append(escHint);
-      rightButtons[0].style.marginLeft = 'auto'; // push the right group over
-      rightButtons.forEach(b => actions.append(b));
+      const controls = document.createElement('span');
+      controls.className = 'edit-controls';
+      controls.append(makeFocusButton(ta.id === 'new-entry' ? '__new__' : actions.closest('.entry-card').dataset.entryId), ...rightButtons);
+      actions.append(controls);
     }
 
     // Shared keybinding + hint behaviour for the two whole-note editors (the new-note
@@ -4379,6 +4389,8 @@
       viewUnshared: `<svg ${svgAttrs}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
       history: `<svg ${svgAttrs}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>`,
       copy: `<svg ${svgAttrs}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+      focus: `<svg ${svgAttrs}><path d="M15 3h6v6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/><path d="M9 21H3v-6"/></svg>`,
+      unfocus: `<svg ${svgAttrs}><path d="m14 10 7-7"/><path d="M20 10h-6V4"/><path d="m3 21 7-7"/><path d="M4 14h6v6"/></svg>`,
       image: `<svg ${svgAttrs}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
       camera: `<svg ${svgAttrs}><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
       link: `<svg ${svgAttrs}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
@@ -4547,6 +4559,7 @@
     let unsubEntries = null;
     let snapshotEntries = [];
     const activeEdits = new Map(); // entryId -> { value, card }
+    let focusedNoteId = null; // '__new__' for the composer; otherwise an entry id
 
     // ── DOM refs ──
     const authSection = document.getElementById('auth-section');
@@ -4563,6 +4576,51 @@
     const toggleViewBtn = document.getElementById('toggle-view');
     const signOutBtn = document.getElementById('sign-out-btn');
     const inputArea = document.getElementById('input-area');
+
+    function updateFocusButton(button) {
+      const focused = button.dataset.focusId === focusedNoteId;
+      if (button.getAttribute('aria-pressed') === String(focused)) return;
+      button.innerHTML = focused ? ICON.unfocus : ICON.focus;
+      button.title = focused ? 'Show all notes' : 'Show only this note';
+      button.setAttribute('aria-label', button.title);
+      button.setAttribute('aria-pressed', String(focused));
+    }
+
+    function makeFocusButton(id) {
+      const button = iconBtn('', '', 'btn-focus');
+      button.dataset.focusId = id;
+      updateFocusButton(button);
+      button.addEventListener('mousedown', e => e.preventDefault());
+      button.addEventListener('click', e => {
+        e.stopPropagation();
+        const editor = id === '__new__' ? newEntry : button.closest('.entry-card').querySelector('textarea');
+        setNoteFocus(focusedNoteId === id ? null : id);
+        if (editor?.isConnected) editor.focus({ preventScroll: true });
+      });
+      return button;
+    }
+
+    function syncNoteFocus() {
+      appSection.classList.toggle('note-focus', focusedNoteId !== null);
+      inputArea.classList.toggle('focused-note', focusedNoteId === '__new__');
+      for (const card of entriesList.children) card.classList.toggle('focused-note', card.dataset.entryId === focusedNoteId);
+      appSection.querySelectorAll('.btn-focus').forEach(updateFocusButton);
+    }
+
+    function setNoteFocus(id) {
+      focusedNoteId = id;
+      syncNoteFocus();
+      renderEntries();
+      relayoutActiveEdit();
+    }
+
+    toggleNewBtn.addEventListener('click', () => {
+      if (focusedNoteId === null) return;
+      inputArea.classList.add('open');
+      toggleNewBtn.classList.add('active');
+      setNoteFocus('__new__');
+      newEntry.focus();
+    });
 
     // ── Firestore 1 MiB document-size guard ──
     // An entry is ONE document; content + editHistory + the images map all share the
@@ -4833,6 +4891,7 @@
 
     toggleViewBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (focusedNoteId !== null) { setNoteFocus(null); return; }
       const idx = VIEW_MODES.findIndex(v => v.id === viewMode);
       viewMode = VIEW_MODES[(idx + 1) % VIEW_MODES.length].id;
       updateViewBtn();
@@ -5098,6 +5157,7 @@
       let entry = initialEntry;
       const card = document.createElement('div');
       card.className = cardClassFor(entry);
+      card.dataset.entryId = entry.id;
       card.appendChild(makeNotesWidthHandle());
       // Card-anchored ridges: __ridge marks the open editor; __hoverRidge previews
       // where a click would land (shown even while another row is being edited).
@@ -5522,6 +5582,7 @@
 
         actions.appendChild(bumpBtn);
         actions.appendChild(copyBtn);
+        actions.appendChild(makeFocusButton(entry.id));
 
         if (entryIsOwn) {
           const shareBtn = document.createElement('button');
@@ -5782,15 +5843,19 @@
       let truncated = false;
 
       for (let entry of allEntries) {
-        // View mode filter
-        const isOwn = entry.owner === currentUserEmail;
-        if (viewMode === 'all' && isSetAside(entry)) continue;   // set-aside notes leave the active list
-        if (viewMode === 'unshared' && (!isOwn || entry.shared)) continue;
-        if (viewMode === 'shared' && !entry.shared) continue;
-        if (tokens.length) {
-          const score = searchScore(entry, tokens);
-          if (!score) continue;
-          cardScores.push(score);
+        if (focusedNoteId !== null) {
+          if (entry.id !== focusedNoteId) continue;
+        } else {
+          // View mode filter
+          const isOwn = entry.owner === currentUserEmail;
+          if (viewMode === 'all' && isSetAside(entry)) continue;   // set-aside notes leave the active list
+          if (viewMode === 'unshared' && (!isOwn || entry.shared)) continue;
+          if (viewMode === 'shared' && !entry.shared) continue;
+          if (tokens.length) {
+            const score = searchScore(entry, tokens);
+            if (!score) continue;
+            cardScores.push(score);
+          }
         }
 
         // Reuse existing DOM for entries being edited
@@ -5900,6 +5965,7 @@
       while (entriesList.children.length > orderedCards.length) {
         entriesList.removeChild(entriesList.lastChild);
       }
+      syncNoteFocus();
 
       // FLIP animation: animate cards that moved, only if both old and new positions are near viewport
       const vh = window.innerHeight;
@@ -5952,6 +6018,7 @@
       // Pre-generating the note id (addDoc mints it server-side) lets the note carry its
       // own contentVersion on the first write.
       const noteRef = doc(entriesRef);
+      if (focusedNoteId === '__new__') setNoteFocus(noteRef.id);
       const versionId = newVersionId(noteRef.id);
       const docData = {
         content,
@@ -6035,6 +6102,7 @@
     cancelNewBtn.innerHTML = ICON.close;
     const newActions = document.getElementById('new-actions');
     mountEditTools(newActions, newEntry, [cancelNewBtn, appendBtn], newEscHint);
+    inputArea.appendChild(makeNotesWidthHandle());
     // Image session for the composer (the new note isn't a doc yet → key '__new__').
     newEntry._imgKey = '__new__';
     newEntry._imgOrder = [];

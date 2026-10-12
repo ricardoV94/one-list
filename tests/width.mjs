@@ -23,8 +23,8 @@ let passed = 0;
 const width = () => page.evaluate(() => document.body.getBoundingClientRect().width);
 const handle = page.locator('#entries-list .notes-width-handle').first();
 const test = async (name, fn) => { await fn(); console.log('  ok   ' + name); passed++; };
-async function drag(dx, pressEscape = false) {
-  const box = await handle.boundingBox();
+async function drag(dx, pressEscape = false, target = handle) {
+  const box = await target.boundingBox();
   const x = box.x + box.width / 2, y = box.y + box.height / 2;
   await page.mouse.move(x, y);
   await page.mouse.down();
@@ -118,6 +118,27 @@ try {
       await handle.waitFor();
       assert.equal(await width(), 760);
     }
+  });
+  await test('new-note border resizes the column while focused and preserves the draft', async () => {
+    await page.click('#toggle-new');
+    const editor = page.locator('#new-entry');
+    await editor.fill('New meeting draft');
+    await editor.evaluate(el => el.setSelectionRange(4, 11));
+    await page.locator('#new-actions .btn-focus').click();
+    assert.equal(await page.locator('.entry-card:visible').count(), 0);
+    const edge = page.locator('#input-area .notes-width-handle');
+    assert.equal(await edge.isVisible(), true);
+    await drag(-60, false, edge);
+    assert.equal(await width(), 880);
+    assert.equal(await editor.inputValue(), 'New meeting draft');
+    assert.deepEqual(await editor.evaluate(el => [el === document.activeElement, el.selectionStart, el.selectionEnd]), [true, 4, 11]);
+    assert.equal(await page.evaluate(() => localStorage.getItem('oneListNotesWidth')), '880');
+    assert.equal(await page.evaluate(() => window.__fs.store.entries.size), 0);
+    await page.click('#toggle-view');
+    assert.equal(await page.locator('#input-area').evaluate(el => el.getBoundingClientRect().width),
+      await page.locator('.entry-card').first().evaluate(el => el.getBoundingClientRect().width));
+    await drag(60, false, edge);
+    await page.click('#cancel-new');
   });
   await test('unavailable local storage does not break resizing', async () => {
     await page.evaluate(() => {
