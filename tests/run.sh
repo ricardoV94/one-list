@@ -23,7 +23,7 @@ if [ -z "${CHROME:-}" ]; then
 fi
 
 LOGIC=(fork calculator)
-BROWSER=(startup preview background sync solo block acks propagate e2e calculator-ui width nesting)
+BROWSER=(startup preview background sync solo block acks propagate e2e calculator-ui width nesting formatting)
 SUITES=("${@:-}")
 if [ -z "${1:-}" ]; then SUITES=("${LOGIC[@]}" "${BROWSER[@]}"); fi
 

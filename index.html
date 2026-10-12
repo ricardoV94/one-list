@@ -41,7 +41,7 @@
   <script>window.__bootMark = function () {};</script>
   <!--
   <script>
-    window.__BUILD = '2026-09-21 19:45'; // replaced with the deploy timestamp by stamp-deploy.sh
+    window.__BUILD = '2026-10-12 17:32'; // replaced with the deploy timestamp by stamp-deploy.sh
     window.__bootTimeline = [];
     window.__bootMark = function (label) {
       var t = performance.now();
@@ -886,7 +886,7 @@
 
   <div id="app">
     <header>
-      <h1 aria-label="One List" style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="" width="32" height="32" style="display:block;background:#7bae7f;border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-09-21 19:45</span></h1>
+      <h1 aria-label="One List" style="display:flex;align-items:center;gap:8px"><img id="app-logo" src="/icon-192.png" alt="" width="32" height="32" style="display:block;background:#7bae7f;border-radius:20%;flex-shrink:0;cursor:pointer"><span id="deploy-date" style="font-size:0.45em;color:#aaa;font-weight:normal">2026-10-12 17:32</span></h1>
       <div class="header-icons">
         <span id="offline-badge" class="header-note" style="display:none">offline</span>
         <button id="sign-out-btn" title="Sign out"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
@@ -3077,8 +3077,8 @@
     }
 
     function applyHeader(textarea, modeId) {
-      const { selectionStart, selectionEnd, value } = textarea;
-      const fullStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+      const { selectionStart, selectionEnd, selectionDirection, value } = textarea;
+      const fullStart = selectionStart === 0 ? 0 : value.lastIndexOf('\n', selectionStart - 1) + 1;
       const rawEnd = selectionStart === selectionEnd
         ? value.indexOf('\n', selectionStart)
         : value.indexOf('\n', selectionEnd);
@@ -3088,21 +3088,31 @@
       const after = value.slice(fullEnd);
       const hashes = HEADER_MODES.find(m => m.id === modeId).hashes;
       const srcLines = selected.split('\n');
+      let nextStart = selectionStart, nextEnd = selectionEnd;
+      let srcOffset = fullStart, dstOffset = fullStart;
       const replacement = srcLines.map(line => {
         const indent = line.match(/^(\s*)/)[1];
         const body = line.replace(STRIP_HEADER_RE, '$1').slice(indent.length);
         // Skip blank lines only in a multi-line selection; on a single empty line
         // still insert the hashes so you can start a heading from scratch.
-        if (!body.trim() && srcLines.length > 1) return line;
-        return indent + hashes + body;
+        const skip = !body.trim() && srcLines.length > 1;
+        const result = skip ? line : indent + hashes + body;
+        // Preserve the caret / deliberate selection relative to the content,
+        // accounting for prefix changes on each line. Never select a whole line
+        // automatically: the next Enter or keystroke would replace its text.
+        const mapPosition = pos => {
+          const offset = pos - srcOffset;
+          return dstOffset + (skip || offset < indent.length ? offset
+            : indent.length + hashes.length + Math.max(0, offset - (line.length - body.length)));
+        };
+        if (selectionStart >= srcOffset && selectionStart <= srcOffset + line.length) nextStart = mapPosition(selectionStart);
+        if (selectionEnd >= srcOffset && selectionEnd <= srcOffset + line.length) nextEnd = mapPosition(selectionEnd);
+        srcOffset += line.length + 1;
+        dstOffset += result.length + 1;
+        return result;
       }).join('\n');
       textarea.value = before + replacement + after;
-      if (srcLines.length === 1 && !selected.trim()) {
-        textarea.selectionStart = textarea.selectionEnd = before.length + replacement.length;
-      } else {
-        textarea.selectionStart = before.length;
-        textarea.selectionEnd = before.length + replacement.length;
-      }
+      textarea.setSelectionRange(nextStart, nextEnd, selectionDirection);
       textarea.dispatchEvent(new Event('input'));
       textarea.focus();
     }

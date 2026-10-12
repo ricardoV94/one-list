@@ -1,4 +1,4 @@
-const CACHE_NAME = 'onelist-2026-09-21 19:45';
+const CACHE_NAME = 'onelist-2026-10-12 17:32';
 const SHELL_FILES = ['/', '/index.html', '/manifest.json', '/icon-192.png', '/icon-512.png'];
 const CDN_FILES = [
   'https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js',
